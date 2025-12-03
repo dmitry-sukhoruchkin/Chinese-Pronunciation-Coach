@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Music & Lyric Editor</title>
+    <style>
+        :root {
+            --bg: #1e1e1e;
+            --panel-bg: #252525;
+            --measure-bg: #2d2d2d;
+            --beat-bg: #383838;
+            --highlight: #ffeb3b;
+            --text-color: #eee;
+            --chord-color: #ff8a80;
+            --measure-border: 1px solid #555;
+            --phrase-marker: #00e676;
+            --accent: #2196f3;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- HEADER & JSON EDITOR --- */
+        .top-section {
+            background: #111;
+            border-bottom: 2px solid #444;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .song-header {
+            text-align: center;
+            padding: 5px 0;
+            position: relative;
+        }
+        .song-header h1 { margin: 0; font-size: 18px; color: #ffb74d; font-family: "KaiTi", serif; }
+        .song-header h2 { margin: 0; font-size: 11px; color: #888; }
+
+        .json-toggle-btn {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: #333;
+            color: #aaa;
+            border: 1px solid #555;
+            font-size: 10px;
+            padding: 2px 8px;
+            cursor: pointer;
+        }
+
+        #json-panel {
+            display: none; /* Hidden by default */
+            padding: 10px;
+            background: #222;
+            border-bottom: 1px solid #444;
+        }
+        #json-input {
+            width: 98%;
+            height: 100px;
+            background: #111;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 11px;
+            border: 1px solid #444;
+            resize: vertical;
+        }
+        .json-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        .action-btn {
+            padding: 5px 15px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        .btn-load { background: var(--accent); color: white; }
+        .btn-copy { background: #555; color: white; }
+
+        /* --- CONTROLS --- */
+        .controls {
+            height: 60px;
+            background: var(--panel-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 0 10px;
+            border-bottom: 1px solid #444;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        button.ctrl-btn {
+            padding: 0 10px;
+            border-radius: 4px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 11px;
+            height: 30px;
+        }
+        .play-btn { background: #43a047; color: white; min-width: 50px; }
+        .play-btn.playing { background: #e53935; }
+        .stop-btn { background: #546e7a; color: white; }
+        .stop-btn.active { border: 2px solid #fff; }
+        .save-btn { background: #ff9800; color: #000; margin-left: auto; }
+        
+        .param-group { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            font-size: 9px; 
+            color: #aaa;
+            font-weight: bold; 
+            min-width: 50px;
+        }
+        input[type=range] { width: 60px; cursor: pointer; height: 10px; margin: 2px 0; }
+
+        select {
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 0 2px;
+            font-size: 10px;
+            max-width: 90px;
+            height: 30px;
+            border-radius: 4px;
+        }
+
+        /* --- SCOREBOARD --- */
+        #score-container {
+            flex-grow: 1;
+            padding: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            gap: 4px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        #zoom-wrapper {
+            transform-origin: top center;
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding-bottom: 50vh; 
+        }
+
+        .measure {
+            display: flex;
+            flex-direction: column;
+            background: var(--measure-bg);
+            border: var(--measure-border);
+            border-radius: 2px;
+            width: 12.2%; 
+            margin-bottom: 4px;
+            position: relative;
+        }
+
+        .measure-info {
+            font-size: 10px;
+            color: #888;
+            padding: 1px 4px;
+            display: flex;
+            justify-content: space-between;
+            background: #222;
+        }
+        .sect-label { color: #ffb74d; font-weight: bold; }
+
+        .beats-row { display: flex; height: 60px; }
+
+        .beat {
+            flex: 1;
+            border-right: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.05s;
+        }
+        .beat:last-child { border-right: none; }
+        .beat:hover { background: #444; }
+        
+        .beat.active {
+            background-color: var(--highlight) !important;
+            color: #000 !important;
+            box-shadow: 0 0 15px #ffeb3b; 
+            z-index: 10;
+        }
+        .beat.active .chord-edit { color: #d50000; }
+        .beat.active .lyric-edit { color: #000; font-weight: bold; }
+        
+        .beat.editing .pinyin-sub { opacity: 0; }
+        .beat.editing .lyric-edit { 
+            font-size: 11px; font-family: monospace; 
+            background: #444; color: #fff;
+        }
+
+        .beat.phrase-start { border-bottom: 4px solid var(--phrase-marker); }
+
+        .chord-edit {
+            font-weight: bold; color: var(--chord-color);
+            background: transparent; border: none;
+            width: 100%; text-align: center;
+            font-size: 14px; margin-top: 2px;
+            font-family: monospace; cursor: pointer;
+        }
+        
+        .lyric-edit {
+            width: 100%; text-align: center;
+            background: transparent; border: none;
+            color: inherit; font-family: "KaiTi", "SimKai", serif;
+            font-size: 20px; line-height: 1;
+            overflow: hidden; white-space: nowrap;
+            margin-bottom: 2px; cursor: pointer;
+        }
+
+        .pinyin-sub {
+            font-size: 9px; color: #aaa;
+            pointer-events: none; position: absolute;
+            top: 18px; width: 100%; text-align: center;
+            transition: opacity 0.1s;
+        }
+        .beat.active .pinyin-sub { color: #333; }
+
+        input:focus { outline: none; }
+    </style>
+</head>
+<body>
+
+    <div class="top-section">
+        <div class="song-header">
+            <h1 id="song-title">Song Title</h1>
+            <h2 id="song-subtitle">Artist / Description</h2>
+            <button class="json-toggle-btn" onclick="toggleJsonPanel()">⚙️ JSON / Config</button>
+        </div>
+
+        <div id="json-panel">
+            <textarea id="json-input" placeholder="Paste song JSON here..."></textarea>
+            <div class="json-actions">
+                <button class="action-btn btn-load" onclick="loadFromInput()">📥 LOAD JSON</button>
+                <button class="action-btn btn-copy" onclick="copyToClipboard()">📋 COPY</button>
+                <span style="color:#666; font-size:10px; align-self:center;">Paste new JSON to load another song.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="ctrl-btn play-btn" id="playBtn" onclick="togglePlay()">▶ PLAY</button>
+        <button class="ctrl-btn stop-btn" onclick="stop()">⏹ STOP</button>
+        
+        <div class="param-group">
+            <span>BPM: <span id="bpmDisplay">140</span></span>
+            <input type="range" id="bpmRange" min="60" max="180" value="140" oninput="updateSpeed()">
+        </div>
+
+        <div class="param-group">
+            <span>VOL: <span id="volDisplay">50</span>%</span>
+            <input type="range" id="volRange" min="0" max="100" value="50" oninput="updateVol()">
+        </div>
+        
+        <select id="voiceSelect" onchange="updateVoice()">
+            <option value="">Loading Voices...</option>
+        </select>
+
+        <select id="instSelect">
+            <option value="sawtooth">🎸 Guitar</option>
+            <option value="triangle">🎹 Piano</option>
+            <option value="sine">🔔 Bell</option>
+            <option value="square">🎮 8-bit</option>
+        </select>
+
+        <div class="param-group" style="border-left: 1px solid #444; padding-left: 5px;">
+            <span>V.Spd: <span id="rateDisplay">0.6</span>x</span>
+            <input type="range" id="rateRange" min="0.5" max="2.0" step="0.1" value="0.6" oninput="updateRate()">
+        </div>
+
+        <div class="param-group">
+            <span>Sync: <span id="offsetDisplay">600</span>ms</span>
+            <input type="range" id="offsetRange" min="0" max="1000" step="10" value="600" oninput="updateOffset()">
+        </div>
+
+        <button class="ctrl-btn stop-btn" id="ttsBtn" onclick="toggleTTS()">🗣️ Слова</button>
+        <button class="ctrl-btn stop-btn active" id="capoBtn" onclick="toggleCapo()">🎸 Capo: 3</button>
+        
+        <button class="ctrl-btn save-btn" onclick="saveToJSON()" title="Save changes to JSON box">💾 SAVE</button>
+    </div>
+
+    <div id="score-container">
+        <div id="zoom-wrapper"></div>
+    </div>
+
+<script>
+    // --- DEFAULT SONG DATA (Template) ---
+    const defaultSong = {
+        title: "G.E.M. - 桃花诺 (Tao Hua Nuo)",
+        subtitle: "A Life of Love and Obsession",
+        bpm: 140,
+        timeline: [
+            { "section": "Intro", "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "Em", "txt": ["","","",""] },
+            { "ch": "Am", "txt": ["","","",""] },
+            { "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "C", "txt": ["","","",""] },
+            { "ch": "C", "txt": ["","chū/初","jiàn/见","ruò/若"] },
+            { "section": "Verse 1", "ch": "F", "txt": ["qiǎn/缱","","quǎn/绻",""] },
+            { "ch": "G", "txt": ["shì/誓","","yán/言",""] },
+            { "ch": "Em", "txt": ["fēng/风","chuī/吹","yún/云","shū/舒"] },
+            { "ch": "Am", "txt": ["juǎn/卷","","suì/岁","yuè/月"] },
+            { "ch": "F", "txt": ["jiān/间","","","wèn/问"] },
+            { "ch": "G", "txt": ["jīn/今","xī/夕","yòu/又",""] },
+            { "ch": "C", "txt": ["hé/何","nián/年","",""] },
+            { "ch": "C", "txt": ["","xīn/心","yǒu/有","xī/犀"] },
+            { "ch": "F", "txt": ["dàn/但","","yuàn/愿",""] },
+            { "ch": "G", "txt": ["zhí/执","","niàn/念",""] },
+            { "ch": "Em", "txt": ["lún/轮","huí/回","guò/过","jīng/经"] },
+            { "ch": "Am", "txt": ["nián/年","","tán/弹","zhǐ/指"] },
+            { "ch": "F", "txt": ["jiān/间","","fán/繁","huā/花"] },
+            { "ch": "G", "txt": ["kāi/开","luò/落","duō/多",""] },
+            { "ch": "C", "txt": ["shǎo/少","biàn/遍","",""] },
+            { "ch": "C", "txt": ["","zhè/这","yī/一","shì/世"] },
+            { "section": "Pre-Chorus", "ch": "F", "txt": ["qiān/牵","","bàn/绊",""] },
+            { "ch": "G", "txt": ["jiū/纠","","jié/结",""] },
+            { "ch": "Em", "txt": ["chù/触","dòng/动","le/了","xīn/心"] },
+            { "ch": "Am", "txt": ["xián/弦","","xià/下","yī/一"] },
+            { "ch": "F", "txt": ["shì/世","","","bù/不"] },
+            { "ch": "G", "txt": ["zhī/知","kě/可","fǒu/否",""] },
+            { "ch": "C", "txt": ["zài/再","jiàn/见","",""] },
+            { "ch": "C7", "txt": ["","liú/留","yī/一","piàn/片"] },
+            { "ch": "F", "txt": ["táo/桃","","huā/花",""] },
+            { "ch": "G", "txt": ["jì/纪","","niàn/念",""] },
+            { "ch": "Em", "txt": ["liǎo/了","què/却","fú/浮","shēng/生"] },
+            { "ch": "Am", "txt": ["yuán/缘","","méi/眉","mù/目"] },
+            { "ch": "F", "txt": ["jiān/间","","","hái/还"] },
+            { "ch": "Dm", "txt": ["yǒu/有","wǒ/我","de/的",""] },
+            { "ch": "G", "txt": ["sī/思","niàn/念","",""] },
+            { "ch": "G", "txt": ["","","yī/一","cùn/寸"] },
+            { "section": "Chorus", "ch": "C", "txt": ["tǔ/土","","yī/一","nián/年"] },
+            { "ch": "G", "txt": ["mù/木","","yī/一","huā/花"] },
+            { "ch": "Am", "txt": ["yī/一","shù/树","yī/一","tān/贪"] },
+            { "ch": "Em", "txt": ["tú/图","","qíng/情","shì/是"] },
+            { "ch": "F", "txt": ["zhǒng/种","","","ài/爱"] },
+            { "ch": "C", "txt": ["piān/偏","kāi/开","zài/在",""] },
+            { "ch": "Dm", "txt": ["mí/迷","tú/途","",""] },
+            { "ch": "G", "txt": ["","","wàng/忘","qián/前"] },
+            { "ch": "C", "txt": ["lù/路","","wàng/忘","jiù/旧"] },
+            { "ch": "G", "txt": ["wù/物","","wàng/忘","xīn/心"] },
+            { "ch": "Am", "txt": ["wàng/忘","nǐ/你","wàng/忘","zuì/最"] },
+            { "ch": "Em", "txt": ["chū/初","","huā/花",""] },
+            { "ch": "F", "txt": ["bān/斑","bān/斑","","liú/留"] },
+            { "ch": "G", "txt": ["zài/在","ài/爱","nǐ/你",""] },
+            { "ch": "C", "txt": ["de/的","lù/路","",""] },
+            { "ch": "C", "txt": ["","qián/虔","chéng/诚","sù/夙"] },
+            { "section": "Bridge", "ch": "Am", "txt": ["yuàn/愿","","lái/来","shì/世"] },
+            { "ch": "Em", "txt": ["lù/路","","yī/一","niàn/念"] },
+            { "ch": "F", "txt": ["táo/桃","huā/花","yīn/因","guǒ/果"] },
+            { "ch": "G", "txt": ["dù/渡","","nà/那","yī/一"] },
+            { "ch": "C", "txt": ["niàn/念","","jǐ/几","quē/阙"] },
+            { "ch": "G", "txt": ["shí/时","guāng/光","zài/在",""] },
+            { "ch": "C", "txt": ["chóng/重","fù/复","",""] },
+            { "ch": "E", "txt": ["","","tīng/听","yǔ/雨"] },
+            { "section": "Ending", "ch": "Am", "txt": ["shū/书","","wàng/望","tiān/天"] },
+            { "ch": "Em", "txt": ["hú/湖","","rén/人","jiān/间"] },
+            { "ch": "F", "txt": ["liáo/寥","liáo/寥","qíng/情","nán/难"] },
+            { "ch": "G", "txt": ["sù/诉","","huí/回","yì/忆"] },
+            { "ch": "C", "txt": ["bān/斑","bān/斑","","liú/留"] },
+            { "ch": "G", "txt": ["zài/在","ài/爱","nǐ/你",""] },
+            { "ch": "C", "txt": ["de/的","lù/路","",""] },
+            { "ch": "C", "txt": ["","","",""] },
+            { "section": "Outro", "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "Em", "txt": ["","","",""] },
+            { "ch": "Am", "txt": ["","","",""] },
+            { "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "C", "txt": ["","","",""] },
+            { "ch": "C", "txt": ["","","",""] }
+        ]
+    };
+
+    // --- GLOBAL STATE ---
+    let currentSong = JSON.parse(JSON.stringify(defaultSong)); // Deep copy
+    let audioCtx = null;
+    let masterGain = null;
+    let isPlaying = false;
+    let isCapo = true;
+    let isTTS = true;
+    let bpm = 140; 
+    let ttsRate = 0.6; 
+    let currentBar = 0;
+    let currentBeat = 0;
+    let mainTimer = null;
+    let lookaheadTimer = null; 
+    let ttsOffset = 600; 
+    
+    let selectedVoice = null;
+    let availableVoices = [];
+    let phraseCache = {}; 
+
+    const noteMap = {'C':261.63,'C#':277.18,'Db':277.18,'D':293.66,'D#':311.13,'Eb':311.13,'E':329.63,'F':349.23,'F#':369.99,'Gb':369.99,'G':392.00,'G#':415.30,'Ab':415.30,'A':440.00,'A#':466.16,'Bb':466.16,'B':493.88};
+    const semitones = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+    // --- INIT ---
+    function init() {
+        // Set initial JSON string in box
+        document.getElementById('json-input').value = JSON.stringify(currentSong, null, 4);
+        
+        applySongData();
+        
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        loadVoices(); 
+    }
+
+    // --- JSON EDITOR LOGIC ---
+    function toggleJsonPanel() {
+        const p = document.getElementById('json-panel');
+        p.style.display = (p.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function loadFromInput() {
+        try {
+            const raw = document.getElementById('json-input').value;
+            const parsed = JSON.parse(raw);
+            if(!parsed.timeline) throw new Error("Missing 'timeline' array");
+            
+            // Success
+            stop();
+            currentSong = parsed;
+            applySongData();
+            // Hide panel after success
+            document.getElementById('json-panel').style.display = 'none';
+        } catch(e) {
+            alert("Error parsing JSON: " + e.message);
+        }
+    }
+
+    function applySongData() {
+        // Update DOM elements
+        document.getElementById('song-title').innerText = currentSong.title || "Untitled";
+        document.getElementById('song-subtitle').innerText = currentSong.subtitle || "";
+        
+        // Update BPM
+        bpm = currentSong.bpm || 120;
+        document.getElementById('bpmRange').value = bpm;
+        document.getElementById('bpmDisplay').innerText = bpm;
+
+        // Reset Playback
+        currentBar = 0; currentBeat = 0;
+        
+        // Re-Generate
+        generatePhrases();
+        renderScore();
+    }
+
+    function saveToJSON() {
+        // Just formats current state into the box
+        currentSong.bpm = bpm; // Save current BPM preference
+        const str = JSON.stringify(currentSong, null, 4);
+        document.getElementById('json-input').value = str;
+        document.getElementById('json-panel').style.display = 'block';
+        alert("Changes saved to JSON box! You can copy it now.");
+    }
+
+    function copyToClipboard() {
+        const txt = document.getElementById('json-input');
+        txt.select();
+        document.execCommand('copy');
+    }
+
+    // --- VOICE LOADING ---
+    function loadVoices() {
+        availableVoices = window.speechSynthesis.getVoices();
+        const select = document.getElementById('voiceSelect');
+        select.innerHTML = "";
+        
+        availableVoices.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.name;
+            opt.innerText = v.name.substring(0, 20) + (v.name.length>20 ? '...' : '');
+            select.appendChild(opt);
+        });
+
+        let target = availableVoices.find(v => v.name === "Google 國語（臺灣）");
+        if (!target) target = availableVoices.find(v => v.lang.includes('TW') || v.name.includes('Taiwan'));
+        if (!target) target = availableVoices.find(v => v.lang.includes('CN') || v.name.includes('China') || v.lang.includes('zh'));
+
+        if (target) {
+            select.value = target.name;
+            selectedVoice = target;
+        } else if (availableVoices.length > 0) {
+            selectedVoice = availableVoices[0];
+            select.value = availableVoices[0].name;
+        }
+        updateVoice();
+    }
+
+    function updateVoice() {
+        const name = document.getElementById('voiceSelect').value;
+        selectedVoice = availableVoices.find(v => v.name === name);
+    }
+
+    // --- LOGIC ---
+    function generatePhrases() {
+        phraseCache = {}; 
+        let allBeats = [];
+        currentSong.timeline.forEach((m, mIdx) => {
+            m.txt.forEach((txt, bIdx) => {
+                let hz = txt.includes('/') ? txt.split('/')[1] : txt;
+                allBeats.push({ text: hz, key: `${mIdx}-${bIdx}` });
+            });
+        });
+
+        let currentPhrase = "";
+        let startKey = null;
+
+        for (let i = 0; i < allBeats.length; i++) {
+            let item = allBeats[i];
+            if (item.text) {
+                if (!currentPhrase) startKey = item.key;
+                currentPhrase += item.text;
+            } else {
+                if (currentPhrase && startKey) {
+                    phraseCache[startKey] = currentPhrase;
+                    currentPhrase = "";
+                    startKey = null;
+                }
+            }
+        }
+        if (currentPhrase && startKey) phraseCache[startKey] = currentPhrase;
+    }
+
+    function renderScore() {
+        const wrapper = document.getElementById('zoom-wrapper');
+        wrapper.innerHTML = '';
+        
+        currentSong.timeline.forEach((m, mIdx) => {
+            const mDiv = document.createElement('div');
+            mDiv.className = 'measure';
+            mDiv.id = `m-${mIdx}`;
+            
+            const info = document.createElement('div');
+            info.className = 'measure-info';
+            info.innerHTML = `<span>${mIdx+1}</span>` + (m.section ? `<span class="sect-label">${m.section}</span>` : ``);
+            mDiv.appendChild(info);
+
+            const row = document.createElement('div');
+            row.className = 'beats-row';
+
+            for (let b=0; b<4; b++) {
+                const bDiv = document.createElement('div');
+                bDiv.className = 'beat';
+                bDiv.id = `b-${mIdx}-${b}`;
+                
+                if(phraseCache[`${mIdx}-${b}`]) {
+                    bDiv.classList.add('phrase-start');
+                }
+
+                bDiv.onclick = (e) => {
+                    if(e.target.tagName !== 'INPUT') {
+                        seekTo(mIdx, b);
+                    }
+                };
+
+                // CHORD
+                if (b === 0) {
+                    const cIn = document.createElement('input');
+                    cIn.className = 'chord-edit';
+                    cIn.value = m.ch || '';
+                    cIn.onchange = (e) => { m.ch = e.target.value; };
+                    bDiv.appendChild(cIn);
+                } else {
+                    bDiv.innerHTML += '<div style="height:18px"></div>';
+                }
+
+                // LYRIC (Smart)
+                const lIn = document.createElement('input');
+                lIn.className = 'lyric-edit';
+                
+                let rawText = m.txt[b] || "";
+                let [py, hz] = rawText.includes('/') ? rawText.split('/') : ["", rawText];
+                lIn.value = hz;
+
+                lIn.onfocus = (e) => {
+                    bDiv.classList.add('editing');
+                    e.target.value = m.txt[b] || "";
+                    e.target.select();
+                };
+
+                lIn.onblur = (e) => {
+                    bDiv.classList.remove('editing');
+                    m.txt[b] = e.target.value;
+                    generatePhrases();
+                    renderScore(); 
+                };
+
+                lIn.onkeydown = (e) => {
+                    if(e.key === 'Enter') lIn.blur();
+                };
+
+                const pDiv = document.createElement('div');
+                pDiv.className = 'pinyin-sub';
+                pDiv.innerText = py;
+                
+                bDiv.appendChild(pDiv);
+                bDiv.appendChild(lIn);
+                row.appendChild(bDiv);
+            }
+            mDiv.appendChild(row);
+            wrapper.appendChild(mDiv);
+        });
+    }
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            updateVol();
+            masterGain.connect(audioCtx.destination);
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function getFreqs(chord, isWeak) {
+        if (!chord) return [];
+        let root = chord.match(/^[A-G][#b]?/)[0];
+        let type = chord.slice(root.length);
+        let idx = semitones.findIndex(n => n === root);
+        if(idx === -1) return [];
+        let shift = isCapo ? 3 : 0;
+        let realIdx = (idx + shift) % 12;
+        let base = noteMap[semitones[realIdx]];
+        let f1 = base / 2;
+        let f2 = type.includes('m') ? f1*Math.pow(2, 3/12) : f1*Math.pow(2, 4/12);
+        let f3 = f1*Math.pow(2, 7/12);
+        let f4 = f1*2;
+        return isWeak ? [f2, f3, f4] : [f1, f2, f3, f4];
+    }
+
+    function playSound(chord, beat) {
+        if (!audioCtx || !masterGain || !chord) return;
+        let isWeak = beat > 0;
+        let freqs = getFreqs(chord, isWeak);
+        let now = audioCtx.currentTime;
+        let dur = isWeak ? 0.08 : 0.12; 
+        
+        let type = document.getElementById('instSelect').value || 'sawtooth';
+
+        freqs.forEach((f, i) => {
+            let o = audioCtx.createOscillator();
+            let g = audioCtx.createGain();
+            o.type = type; 
+            o.frequency.value = f;
+            
+            let start = now + i*(isWeak?0.004:0.008);
+            g.gain.setValueAtTime(0, start);
+            g.gain.linearRampToValueAtTime(isWeak?0.2:0.3, start+0.01);
+            g.gain.exponentialRampToValueAtTime(0.001, start+dur+0.1);
+            
+            o.connect(g); g.connect(masterGain);
+            o.start(start); o.stop(start+dur+0.2);
+        });
+    }
+
+    function togglePlay() { 
+        initAudio(); 
+        if(isPlaying) stop(); else play(); 
+    }
+    
+    function play() {
+        if(isPlaying) return;
+        isPlaying = true;
+        document.getElementById('playBtn').innerText = "⏸ PAUSE";
+        document.getElementById('playBtn').classList.add('playing');
+        
+        if(isTTS) {
+             let key = `${currentBar}-${currentBeat}`;
+             if(phraseCache[key]) speakPhrase(phraseCache[key]);
+        }
+        
+        tick();
+    }
+
+    function stop() {
+        isPlaying = false;
+        clearTimeout(mainTimer);
+        clearTimeout(lookaheadTimer);
+        window.speechSynthesis.cancel();
+        document.getElementById('playBtn').innerText = "▶ PLAY";
+        document.getElementById('playBtn').classList.remove('playing');
+        document.querySelectorAll('.beat.active').forEach(e => e.classList.remove('active'));
+    }
+
+    function seekTo(m, b) {
+        currentBar = m;
+        currentBeat = b;
+        updateHighlight();
+        if(isPlaying) {
+            clearTimeout(mainTimer);
+            clearTimeout(lookaheadTimer);
+            window.speechSynthesis.cancel();
+            if(isTTS && phraseCache[`${m}-${b}`]) speakPhrase(phraseCache[`${m}-${b}`]);
+            tick();
+        } else {
+            let txt = currentSong.timeline[m].txt[b];
+            let hz = txt.includes('/')?txt.split('/')[1]:txt;
+            if(hz) speakPhrase(hz);
+        }
+    }
+
+    function speakPhrase(text) {
+        window.speechSynthesis.cancel();
+        let u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-CN';
+        u.rate = ttsRate;
+        if(selectedVoice) u.voice = selectedVoice;
+        window.speechSynthesis.speak(u);
+    }
+
+    function tick() {
+        if (!isPlaying) return;
+
+        if (currentBar >= currentSong.timeline.length) { 
+            currentBar=0; currentBeat=0; 
+            stop(); 
+            return; 
+        }
+
+        updateHighlight();
+        
+        let m = currentSong.timeline[currentBar];
+        if (m.ch) playSound(m.ch, currentBeat);
+
+        const beatDuration = (60/bpm)*1000;
+        mainTimer = setTimeout(() => {
+            currentBeat++;
+            if(currentBeat >= 4) {
+                currentBeat = 0;
+                currentBar++;
+            }
+            tick();
+        }, beatDuration);
+
+        // SYNC
+        if (isTTS) {
+            let nextB = currentBeat + 1;
+            let nextM = currentBar;
+            if (nextB >= 4) { nextB = 0; nextM++; }
+
+            let nextKey = `${nextM}-${nextB}`;
+            if (phraseCache[nextKey]) {
+                let delay = beatDuration - ttsOffset;
+                if (delay < 0) delay = 0; 
+                lookaheadTimer = setTimeout(() => {
+                    if (isPlaying) speakPhrase(phraseCache[nextKey]);
+                }, delay);
+            }
+        }
+    }
+
+    function updateHighlight() {
+        document.querySelectorAll('.beat.active').forEach(e => e.classList.remove('active'));
+        const el = document.getElementById(`b-${currentBar}-${currentBeat}`);
+        if(el) {
+            el.classList.add('active');
+            el.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
+        }
+    }
+
+    function updateVol() { 
+        let el = document.getElementById('volRange');
+        if(el) {
+            let v = el.value;
+            document.getElementById('volDisplay').innerText = v;
+            if(masterGain) masterGain.gain.value = v/100; 
+        }
+    }
+    function updateSpeed() { 
+        bpm = parseInt(document.getElementById('bpmRange').value); 
+        document.getElementById('bpmDisplay').innerText = bpm; 
+    }
+    function updateRate() {
+        ttsRate = parseFloat(document.getElementById('rateRange').value);
+        document.getElementById('rateDisplay').innerText = ttsRate.toFixed(1);
+    }
+    function updateOffset() {
+        ttsOffset = parseInt(document.getElementById('offsetRange').value);
+        document.getElementById('offsetDisplay').innerText = ttsOffset;
+    }
+    function toggleTTS() { 
+        isTTS = !isTTS; 
+        document.getElementById('ttsBtn').innerText = isTTS?"🗣️ Слова: ВКЛ":"🗣️ Слова: ВЫКЛ"; 
+    }
+    function toggleCapo() { 
+        isCapo = !isCapo; 
+        document.getElementById('capoBtn').classList.toggle('active', isCapo); 
+    }
+    function exportData() {
+        // Deprecated, use Save to JSON instead
+        saveToJSON();
+    }
+
+    init();
+
+</script>
+</body>
+</html>
