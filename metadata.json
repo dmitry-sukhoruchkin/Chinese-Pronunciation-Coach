@@ -1,0 +1,7 @@
+{
+  "name": "Chinese Pronunciation Coach 0.1.1",
+  "description": "An interactive agent that helps you practice your Chinese character pronunciation. It displays a character, listens to your attempt, and provides instant feedback.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
