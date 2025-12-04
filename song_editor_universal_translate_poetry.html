@@ -1,0 +1,935 @@
+<!-- START OF FILE song_editor_large_fonts.html -->
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Music Editor (Large Fonts)</title>
+    <style>
+        :root {
+            --bg: #1e1e1e;
+            --panel-bg: #252525;
+            --measure-bg: #2d2d2d;
+            --beat-bg: #383838;
+            --highlight: #ffeb3b;
+            --text-color: #eee;
+            --chord-color: #ff8a80;
+            --measure-border: 1px solid #555;
+            --phrase-marker: #00e676;
+            --accent: #2196f3;
+            --trans-word-color: #4fc3f7; /* Цвет перевода слова */
+            --trans-poem-color: #e0e0e0; /* Цвет поэзии */
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- HEADER & JSON EDITOR --- */
+        .top-section {
+            background: #111;
+            border-bottom: 2px solid #444;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .song-header {
+            text-align: center;
+            padding: 2px 0;
+        }
+        .song-header h1 { margin: 0; font-size: 16px; color: #ffb74d; font-family: "KaiTi", serif; }
+        .song-header h2 { margin: 0; font-size: 10px; color: #888; }
+
+        .json-toggle-btn {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: #333;
+            color: #aaa;
+            border: 1px solid #555;
+            font-size: 10px;
+            padding: 2px 8px;
+            cursor: pointer;
+        }
+
+        #json-panel {
+            display: none;
+            padding: 10px;
+            background: #222;
+            border-bottom: 1px solid #444;
+        }
+        #json-input {
+            width: 98%;
+            height: 100px;
+            background: #111;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 11px;
+            border: 1px solid #444;
+            resize: vertical;
+        }
+        .json-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 5px;
+        }
+        .action-btn {
+            padding: 5px 15px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        .btn-load { background: var(--accent); color: white; }
+        .btn-copy { background: #555; color: white; }
+
+        /* --- CONTROLS --- */
+        .controls {
+            height: 50px;
+            background: var(--panel-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 0 10px;
+            border-bottom: 1px solid #444;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        button.ctrl-btn {
+            padding: 0 10px;
+            border-radius: 4px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 11px;
+            height: 28px;
+        }
+        .play-btn { background: #43a047; color: white; min-width: 50px; }
+        .play-btn.playing { background: #e53935; }
+        .stop-btn { background: #546e7a; color: white; }
+        .stop-btn.active { border: 2px solid #fff; }
+        .save-btn { background: #ff9800; color: #000; margin-left: auto; }
+        
+        .param-group { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            font-size: 9px; 
+            color: #aaa;
+            font-weight: bold; 
+            min-width: 50px;
+        }
+        input[type=range] { width: 100px; cursor: pointer; height: 8px; margin: 1px 0; }
+
+        select {
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 0 2px;
+            font-size: 10px;
+            max-width: 90px;
+            height: 28px;
+            border-radius: 4px;
+        }
+
+        /* --- SCOREBOARD --- */
+        #score-container {
+            flex-grow: 1;
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            gap: 4px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        #zoom-wrapper {
+            transform-origin: top center;
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-start; /* Начинаем слева */
+            gap: 0.5%; /* Маленький зазор */
+        }
+
+        .measure {
+            display: flex;
+            flex-direction: column;
+            background: var(--measure-bg);
+            border: var(--measure-border);
+            border-radius: 2px;
+            /* ВОЗВРАЩАЕМ 8 В РЯД */
+            width: 12%; 
+            margin-bottom: 4px;
+            position: relative;
+            box-sizing: border-box;
+        }
+
+        .measure-info {
+            font-size: 9px;
+            color: #888;
+            padding: 1px 3px;
+            display: flex;
+            justify-content: space-between;
+            background: #222;
+            border-bottom: 1px solid #444;
+            height: 14px;
+        }
+        .sect-label { color: #ffb74d; font-weight: bold; overflow: hidden; white-space: nowrap; }
+
+        /* --- ИЗМЕНЕНИЕ 1: Увеличена высота строки --- */
+        .beats-row { 
+            display: flex; 
+            height: 110px; /* Было 85px. Увеличили для крупных шрифтов */
+        }
+
+        /* Поле поэзии (внизу такта) */
+        /* --- ИЗМЕНЕНИЕ 6: Увеличен шрифт и высота --- */
+        .measure-trans {
+            width: 100%;
+            background: #222;
+            border: none;
+            border-top: 1px solid #555;
+            color: var(--trans-poem-color);
+            font-family: 'Arial Narrow', sans-serif; 
+            font-size: 13px; /* Было 11px */
+            line-height: 1.1;
+            text-align: center;
+            padding: 2px;
+            box-sizing: border-box;
+            outline: none;
+            resize: none; 
+            overflow: hidden;
+            min-height: 32px; /* Было 28px */
+        }
+        .measure-trans:focus { background: #000; color: #fff; min-height: 50px; position: absolute; bottom: 0; z-index: 20; border: 1px solid #aaa; }
+
+        .beat {
+            flex: 1;
+            border-right: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between; /* Распределяем элементы */
+            position: relative;
+            cursor: pointer;
+            padding-bottom: 2px;
+        }
+        .beat:last-child { border-right: none; }
+        .beat:hover { background: #444; }
+        
+        .beat.active {
+            background-color: var(--highlight) !important;
+            color: #000 !important;
+            box-shadow: 0 0 10px #ffeb3b; 
+            z-index: 10;
+        }
+        /* В активном бите цвета меняются для контраста */
+        .beat.active .chord-edit { color: #d50000; }
+        .beat.active .lyric-edit { color: #000; font-weight: 900; }
+        .beat.active .pinyin-sub { color: #333; font-weight: bold; }
+        .beat.active .trans-sub { color: #0000ff; font-weight: bold; }
+
+        .beat.editing .lyric-edit { 
+            background: #444; color: #fff; z-index: 5;
+        }
+
+        .beat.phrase-start { border-bottom: 3px solid var(--phrase-marker); }
+
+        /* --- ИЗМЕНЕНИЕ 2: Увеличен шрифт аккордов --- */
+        .chord-edit {
+            font-weight: bold; color: var(--chord-color);
+            background: transparent; border: none;
+            width: 100%; text-align: center;
+            font-size: 16px; /* Было 13px */
+            margin-top: 1px;
+            font-family: monospace; cursor: pointer;
+            height: 20px; /* Чуть больше места */
+        }
+        
+        /* --- ИЗМЕНЕНИЕ 4: Увеличен шрифт иероглифов (ГЛАВНОЕ) --- */
+        .lyric-edit {
+            width: 100%; text-align: center;
+            background: transparent; border: none;
+            color: inherit; font-family: "KaiTi", "SimKai", serif;
+            font-size: 24px; /* Было 18px */
+            line-height: 1;
+            overflow: visible; white-space: nowrap;
+            cursor: pointer;
+            margin: -2px 0;
+            z-index: 2;
+        }
+
+        /* --- ИЗМЕНЕНИЕ 3: Увеличен шрифт пиньинь --- */
+        .pinyin-sub {
+            font-size: 10px; /* Было 8px */
+            color: #aaa;
+            width: 100%; text-align: center;
+            white-space: nowrap;
+            margin-top: 2px;
+        }
+        
+        /* --- ИЗМЕНЕНИЕ 5: Увеличен шрифт перевода слова --- */
+        .trans-sub {
+            font-size: 10px; /* Было 8px */
+            color: var(--trans-word-color);
+            width: 100%; text-align: center;
+            white-space: nowrap; overflow: hidden; text-overflow: clip;
+            font-family: 'Arial Narrow', sans-serif;
+            margin-bottom: 2px;
+        }
+
+        input:focus { outline: none; }
+
+    </style>
+</head>
+<body>
+
+    <div class="top-section">
+        <div class="song-header">
+            <h1 id="song-title">Song Title</h1>
+            <h2 id="song-subtitle">Artist / Description</h2>
+            <button class="json-toggle-btn" onclick="toggleJsonPanel()">⚙️ JSON / Config</button>
+        </div>
+
+        <div id="json-panel">
+            <textarea id="json-input" placeholder="Paste song JSON here..."></textarea>
+            <div class="json-actions">
+                <button class="action-btn btn-load" onclick="loadFromInput()">📥 LOAD JSON</button>
+                <button class="action-btn btn-copy" onclick="copyToClipboard()">📋 COPY</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="ctrl-btn play-btn" id="playBtn" onclick="togglePlay()">▶ PLAY</button>
+        <button class="ctrl-btn stop-btn" onclick="stop()">⏹ STOP</button>
+        
+        <div class="param-group">
+            <span>BPM: <span id="bpmDisplay">140</span></span>
+            <input type="range" id="bpmRange" min="60" max="180" value="140" oninput="updateSpeed()">
+        </div>
+
+        <div class="param-group">
+            <span>VOL: <span id="volDisplay">50</span>%</span>
+            <input type="range" id="volRange" min="0" max="100" value="50" oninput="updateVol()">
+        </div>
+        
+        <select id="voiceSelect" onchange="updateVoice()">
+            <option value="">Loading Voices...</option>
+        </select>
+
+        <select id="instSelect">
+            <option value="sawtooth">🎸 Guitar</option>
+            <option value="triangle">🎹 Piano</option>
+            <option value="sine">🔔 Bell</option>
+            <option value="square">🎮 8-bit</option>
+        </select>
+
+        <div class="param-group" style="border-left: 1px solid #444; padding-left: 5px;">
+            <span>V.Spd: <span id="rateDisplay">0.6</span>x</span>
+            <input type="range" id="rateRange" min="0.5" max="2.0" step="0.1" value="0.6" oninput="updateRate()">
+        </div>
+
+        <div class="param-group">
+            <span>Sync: <span id="offsetDisplay">600</span>ms</span>
+            <input type="range" id="offsetRange" min="0" max="1000" step="10" value="600" oninput="updateOffset()">
+        </div>
+
+        <button class="ctrl-btn stop-btn" id="ttsBtn" onclick="toggleTTS()">🗣️ Слова</button>
+        <button class="ctrl-btn stop-btn active" id="capoBtn" onclick="toggleCapo()">🎸 Capo: 3</button>
+        
+        <button class="ctrl-btn save-btn" onclick="saveToJSON()" title="Save changes to JSON box">💾 SAVE</button>
+    </div>
+
+    <div id="score-container">
+        <div id="zoom-wrapper"></div>
+    </div>
+
+<script>
+    // --- UPDATED SONG DATA (High Density Mode) ---
+    // Формат txt: "пиньинь/иероглиф/перевод_слова"
+    const defaultSong = {
+        title: "G.E.M. - 桃花诺 (Tao Hua Nuo)",
+        subtitle: "A Life of Love and Obsession",
+        bpm: 140,
+        timeline: [
+            { "section": "Intro", "ch": "F", "txt": ["","","",""], "trans": "(Вступление)" },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "Em", "txt": ["","","",""] },
+            { "ch": "Am", "txt": ["","","",""] },
+            { "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "C", "txt": ["","","",""] },
+
+            { "ch": "C", "txt": ["","chū/初/впервые","jiàn/见/видеть","ruò/若/словно"], "trans": "Словно первая встреча..." },
+            { "section": "Verse 1", "ch": "F", "txt": ["qiǎn/缱/путы","","quǎn/绻/любовь",""], "trans": "Неразрывная, запутанная связь..." },
+            { "ch": "G", "txt": ["shì/誓/клятва","","yán/言/слова",""], "trans": "...наши клятвы." },
+            { "ch": "Em", "txt": ["fēng/风/ветер","chuī/吹/дуть","yún/云/облако","shū/舒/свободно"], "trans": "Ветер разгоняет облака..." },
+            { "ch": "Am", "txt": ["juǎn/卷/свернуть","","suì/岁/годы","yuè/月/месяцы"], "trans": "...и они плывут свободно." },
+            { "ch": "F", "txt": ["jiān/间/между","","","wèn/问/спроси"], "trans": "Среди бега времени спроси:" },
+            { "ch": "G", "txt": ["jīn/今/сегодня","xī/夕/вечер","yòu/又/снова",""], "trans": "Какой же сегодня вечер..." },
+            { "ch": "C", "txt": ["hé/何/какой","nián/年/год","",""], "trans": "...и какой сейчас год?" },
+            { "ch": "C", "txt": ["","xīn/心/сердце","yǒu/有/иметь","xī/犀/единение"], "trans": "Сердца бьются в унисон." },
+            { "ch": "F", "txt": ["dàn/但/лишь","","yuàn/愿/желать",""], "trans": "Лишь хочу удержать..." },
+            { "ch": "G", "txt": ["zhí/执/держать","","niàn/念/мысль",""], "trans": "...эту одну мысль." },
+            { "ch": "Em", "txt": ["lún/轮/колесо","huí/回/возврат","guò/过/прошло","jīng/经/сквозь"], "trans": "Колесо перерождений..." },
+            { "ch": "Am", "txt": ["nián/年/год","","tán/弹/щелчок","zhǐ/指/палец"], "trans": "...прошло сквозь года." },
+            { "ch": "F", "txt": ["jiān/间/промежуток","","fán/繁/пышный","huā/花/цветок"], "trans": "В мгновение ока цветы..." },
+            { "ch": "G", "txt": ["kāi/开/открыть","luò/落/упасть","duō/多/много",""], "trans": "...распускались и опадали..." },
+            { "ch": "C", "txt": ["shǎo/少/мало","biàn/遍/раз","",""], "trans": "...бесчисленное число раз." },
+
+            { "ch": "C", "txt": ["","zhè/这/эта","yī/一/одна","shì/世/жизнь"], "trans": "В этой жизни..." },
+            { "section": "Pre-Chorus", "ch": "F", "txt": ["qiān/牵/тянуть","","bàn/绊/оковы",""], "trans": "...наша связь, как путы..." },
+            { "ch": "G", "txt": ["jiū/纠/сплести","","jié/结/узел",""], "trans": "...сплелась в узлы." },
+            { "ch": "Em", "txt": ["chù/触/тронуть","dòng/动/двигать","le/了/прош.вр","xīn/心/сердце"], "trans": "И это затронуло..." },
+            { "ch": "Am", "txt": ["xián/弦/струна","","xià/下/след","yī/一/один"], "trans": "...струны моего сердца." },
+            { "ch": "F", "txt": ["shì/世/жизнь","","","bù/不/не"], "trans": "В следующей жизни..." },
+            { "ch": "G", "txt": ["zhī/知/знать","kě/可/мочь","fǒu/否/ли",""], "trans": "...не знаю, сможем ли..." },
+            { "ch": "C", "txt": ["zài/再/снова","jiàn/见/видеть","",""], "trans": "...мы встретиться снова." },
+            { "ch": "C7", "txt": ["","liú/留/оставить","yī/一/один","piàn/片/кусок"], "trans": "Оставляю один лепесток..." },
+            { "ch": "F", "txt": ["táo/桃/персик","","huā/花/цветок",""], "trans": "...цветка персика..." },
+            { "ch": "G", "txt": ["jì/纪/память","","niàn/念/вспомнить",""], "trans": "...как воспоминание." },
+            { "ch": "Em", "txt": ["liǎo/了/завершить","què/却/но","fú/浮/плыть","shēng/生/жизнь"], "trans": "Чтобы завершить судьбу..." },
+            { "ch": "Am", "txt": ["yuán/缘/судьба","","méi/眉/брови","mù/目/глаза"], "trans": "...этой бренной жизни." },
+            { "ch": "F", "txt": ["jiān/间/меж","","","hái/还/всё еще"], "trans": "В твоих глазах..." },
+            { "ch": "Dm", "txt": ["yǒu/有/есть","wǒ/我/моя","de/的/из",""], "trans": "...всё ещё есть..." },
+            { "ch": "G", "txt": ["sī/思/думать","niàn/念/скучать","",""], "trans": "...тоска обо мне." },
+
+            { "ch": "G", "txt": ["","","yī/一/один","cùn/寸/цунь"], "trans": "Один цунь земли..." },
+            { "section": "Chorus", "ch": "C", "txt": ["tǔ/土/земля","","yī/一/один","nián/年/год"], "trans": "...один год деревьев..." },
+            { "ch": "G", "txt": ["mù/木/дерево","","yī/一/один","huā/花/цветок"], "trans": "...один цветок..." },
+            { "ch": "Am", "txt": ["yī/一/один","shù/树/древо","yī/一/один","tān/贪/жажда"], "trans": "...одно дерево, одна жажда." },
+            { "ch": "Em", "txt": ["tú/图/схема","","qíng/情/чувство","shì/是/есть"], "trans": "Чувства — это любовь..." },
+            { "ch": "F", "txt": ["zhǒng/种/вид","","","ài/爱/любовь"], "trans": "...что расцвела..." },
+            { "ch": "C", "txt": ["piān/偏/наклон","kāi/开/открыт","zài/在/в",""], "trans": "...по ошибке..." },
+            { "ch": "Dm", "txt": ["mí/迷/блуждать","tú/途/путь","",""], "trans": "...на ложном пути." },
+            { "ch": "G", "txt": ["","","wàng/忘/забыть","qián/前/перед"], "trans": "Забыть путь вперед..." },
+            { "ch": "C", "txt": ["lù/路/дорога","","wàng/忘/забыть","jiù/旧/старый"], "trans": "...забыть прошлое..." },
+            { "ch": "G", "txt": ["wù/物/вещь","","wàng/忘/забыть","xīn/心/сердце"], "trans": "...забыть чувства..." },
+            { "ch": "Am", "txt": ["wàng/忘/забыть","nǐ/你/ты","wàng/忘/забыть","zuì/最/самый"], "trans": "...забыть тебя, забыть начало." },
+            { "ch": "Em", "txt": ["chū/初/начало","","huā/花/цветок",""], "trans": "Пятна цветов..." },
+            { "ch": "F", "txt": ["bān/斑/пятно","bān/斑/пятно","","liú/留/остаться"], "trans": "...остались на дороге," },
+            { "ch": "G", "txt": ["zài/在/на","ài/爱/любить","nǐ/你/тебя",""], "trans": "...где я любила тебя." },
+            { "ch": "C", "txt": ["de/的/из","lù/路/путь","",""], "trans": "" },
+
+            { "ch": "C", "txt": ["","","",""] },
+            { "section": "Instrumental", "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "Em", "txt": ["","","",""] },
+            { "ch": "Am", "txt": ["","","",""] },
+            { "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "C", "txt": ["","","",""] },
+ 
+            { "ch": "C", "txt": ["","zhè/这/эта","yī/一/одна","shì/世/жизнь"], "trans": "В этой жизни..." },
+            { "section": "Pre-Chorus", "ch": "F", "txt": ["qiān/牵/тянуть","","bàn/绊/оковы",""], "trans": "...наша связь, как путы..." },
+            { "ch": "G", "txt": ["jiū/纠/сплести","","jié/结/узел",""], "trans": "...сплелась в узлы." },
+            { "ch": "Em", "txt": ["chù/触/тронуть","dòng/动/двигать","le/了/прош.вр","xīn/心/сердце"], "trans": "И это затронуло..." },
+            { "ch": "Am", "txt": ["xián/弦/струна","","xià/下/след","yī/一/один"], "trans": "...струны моего сердца." },
+            { "ch": "F", "txt": ["shì/世/жизнь","","","bù/不/не"], "trans": "В следующей жизни..." },
+            { "ch": "G", "txt": ["zhī/知/знать","kě/可/мочь","fǒu/否/ли",""], "trans": "...не знаю, сможем ли..." },
+            { "ch": "C", "txt": ["zài/再/снова","jiàn/见/видеть","",""], "trans": "...мы встретиться снова." },
+            { "ch": "C7", "txt": ["","liú/留/оставить","yī/一/один","piàn/片/кусок"], "trans": "Оставляю один лепесток..." },
+            { "ch": "F", "txt": ["táo/桃/персик","","huā/花/цветок",""], "trans": "...цветка персика..." },
+            { "ch": "G", "txt": ["jì/纪/память","","niàn/念/вспомнить",""], "trans": "...как воспоминание." },
+            { "ch": "Em", "txt": ["liǎo/了/завершить","què/却/но","fú/浮/плыть","shēng/生/жизнь"], "trans": "Чтобы завершить судьбу..." },
+            { "ch": "Am", "txt": ["yuán/缘/судьба","","méi/眉/брови","mù/目/глаза"], "trans": "...этой бренной жизни." },
+            { "ch": "F", "txt": ["jiān/间/меж","","","hái/还/всё еще"], "trans": "В твоих глазах..." },
+            { "ch": "Dm", "txt": ["yǒu/有/есть","wǒ/我/моя","de/的/из",""], "trans": "...всё ещё есть..." },
+            { "ch": "G", "txt": ["sī/思/думать","niàn/念/скучать","",""], "trans": "...тоска обо мне." },
+
+            { "ch": "G", "txt": ["","","yī/一/один","cùn/寸/цунь"], "trans": "Один цунь земли..." },
+            { "section": "Chorus", "ch": "C", "txt": ["tǔ/土/земля","","yī/一/один","nián/年/год"], "trans": "...один год деревьев..." },
+            { "ch": "G", "txt": ["mù/木/дерево","","yī/一/один","huā/花/цветок"], "trans": "...один цветок..." },
+            { "ch": "Am", "txt": ["yī/一/один","shù/树/древо","yī/一/один","tān/贪/жажда"], "trans": "...одно дерево, одна жажда." },
+            { "ch": "Em", "txt": ["tú/图/схема","","qíng/情/чувство","shì/是/есть"], "trans": "Чувства — это любовь..." },
+            { "ch": "F", "txt": ["zhǒng/种/вид","","","ài/爱/любовь"], "trans": "...что расцвела..." },
+            { "ch": "C", "txt": ["piān/偏/наклон","kāi/开/открыт","zài/在/в",""], "trans": "...по ошибке..." },
+            { "ch": "Dm", "txt": ["mí/迷/блуждать","tú/途/путь","",""], "trans": "...на ложном пути." },
+            { "ch": "G", "txt": ["","","wàng/忘/забыть","qián/前/перед"], "trans": "Забыть путь вперед..." },
+            { "ch": "C", "txt": ["lù/路/дорога","","wàng/忘/забыть","jiù/旧/старый"], "trans": "...забыть прошлое..." },
+            { "ch": "G", "txt": ["wù/物/вещь","","wàng/忘/забыть","xīn/心/сердце"], "trans": "...забыть чувства..." },
+            { "ch": "Am", "txt": ["wàng/忘/забыть","nǐ/你/ты","wàng/忘/забыть","zuì/最/самый"], "trans": "...забыть тебя, забыть начало." },
+            { "ch": "Em", "txt": ["chū/初/начало","","huā/花/цветок",""], "trans": "Пятна цветов..." },
+            { "ch": "F", "txt": ["bān/斑/пятно","bān/斑/пятно","","liú/留/остаться"], "trans": "...остались на дороге," },
+            { "ch": "G", "txt": ["zài/在/на","ài/爱/любить","nǐ/你/тебя",""], "trans": "...где я любила тебя." },
+            { "ch": "C", "txt": ["de/的/из","lù/路/путь","",""], "trans": "" },
+
+            { "ch": "C", "txt": ["","qián/虔/искренне","chéng/诚/честно","sù/夙/давний"], "trans": "Искренне молю о следующей жизни." },
+            { "section": "Bridge", "ch": "Am", "txt": ["yuàn/愿/желать","","lái/来/прийти","shì/世/мир"], "trans": "Путь в мир иной..." },
+            { "ch": "Em", "txt": ["lù/路/путь","","yī/一/одна","niàn/念/мысль"], "trans": "...одна мысль..." },
+            { "ch": "F", "txt": ["táo/桃/персик","huā/花/цветок","yīn/因/причина","guǒ/果/следствие"], "trans": "...о цветах персика и карме." },
+            { "ch": "G", "txt": ["dù/渡/переправа","","nà/那/тот","yī/一/один"], "trans": "Переправа через..." },
+            { "ch": "C", "txt": ["niàn/念/мысль","","jǐ/几/сколько","quē/阙/песен"], "trans": "...то воспоминание." },
+            { "ch": "G", "txt": ["shí/时/время","guāng/光/свет","zài/在/в",""], "trans": "Сколько раз..." },
+            { "ch": "C", "txt": ["chóng/重/снова","fù/复/повтор","",""], "trans": "...время повторялось?" },
+
+            { "ch": "E", "txt": ["","","tīng/听/слушать","yǔ/雨/дождь"], "trans": "Слушая дождь..." },
+            { "section": "Ending", "ch": "Am", "txt": ["shū/书/писать","","wàng/望/смотреть","tiān/天/небо"], "trans": "...глядя на небо..." },
+            { "ch": "Em", "txt": ["hú/湖/озеро","","rén/人/человек","jiān/间/меж"], "trans": "...и на озеро." },
+            { "ch": "F", "txt": ["liáo/寥/пусто","liáo/寥/тихо","qíng/情/чувство","nán/难/трудно"], "trans": "В мире людей одиноко..." },
+            { "ch": "G", "txt": ["sù/诉/сказать","","huí/回/возврат","yì/忆/память"], "trans": "...чувства трудно выразить." },
+            { "ch": "C", "txt": ["bān/斑/пятно","bān/斑/пятно","","liú/留/остаться"], "trans": "Воспоминания пятнами..." },
+            { "ch": "G", "txt": ["zài/在/на","ài/爱/любить","nǐ/你/тебя",""], "trans": "...на дороге любви." },
+            { "ch": "C", "txt": ["de/的/из","lù/路/путь","",""], "trans": "" },
+
+            { "ch": "C", "txt": ["","","",""], "trans": "" },
+            { "section": "Outro", "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "Em", "txt": ["","","",""] },
+            { "ch": "Am", "txt": ["","","",""] },
+            { "ch": "F", "txt": ["","","",""] },
+            { "ch": "G", "txt": ["","","",""] },
+            { "ch": "C", "txt": ["","","",""] },
+            { "ch": "C", "txt": ["","","",""] },
+        ]
+    };
+
+    // --- GLOBAL STATE ---
+    let currentSong = JSON.parse(JSON.stringify(defaultSong));
+    let audioCtx = null;
+    let masterGain = null;
+    
+    // TIMING VARIABLES
+    let isPlaying = false;
+    let lookahead = 25.0; 
+    let scheduleAheadTime = 0.1;
+    let nextNoteTime = 0.0;
+    let timerID; 
+    let notesInQueue = []; 
+
+    // State
+    let currentBar = 0;
+    let currentBeat = 0;
+    
+    // Preferences
+    let bpm = 150; 
+    let ttsRate = 0.6; 
+    let ttsOffset = 300; 
+    let isCapo = true;
+    let isTTS = true;
+    
+    let selectedVoice = null;
+    let availableVoices = [];
+    let phraseCache = {}; 
+
+    const noteMap = {'C':261.63,'C#':277.18,'Db':277.18,'D':293.66,'D#':311.13,'Eb':311.13,'E':329.63,'F':349.23,'F#':369.99,'Gb':369.99,'G':392.00,'G#':415.30,'Ab':415.30,'A':440.00,'A#':466.16,'Bb':466.16,'B':493.88};
+    const semitones = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+    // --- INIT ---
+    function init() {
+        document.getElementById('json-input').value = JSON.stringify(currentSong, null, 4);
+        applySongData();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        loadVoices(); 
+        requestAnimationFrame(draw);
+    }
+
+    // --- JSON EDITOR ---
+    function toggleJsonPanel() {
+        const p = document.getElementById('json-panel');
+        p.style.display = (p.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function loadFromInput() {
+        try {
+            const raw = document.getElementById('json-input').value;
+            const parsed = JSON.parse(raw);
+            if(!parsed.timeline) throw new Error("Missing 'timeline'");
+            stop();
+            currentSong = parsed;
+            applySongData();
+            document.getElementById('json-panel').style.display = 'none';
+        } catch(e) {
+            alert("Error: " + e.message);
+        }
+    }
+
+    function applySongData() {
+        document.getElementById('song-title').innerText = currentSong.title || "Untitled";
+        document.getElementById('song-subtitle').innerText = currentSong.subtitle || "";
+        bpm = currentSong.bpm || 120;
+        document.getElementById('bpmRange').value = bpm;
+        document.getElementById('bpmDisplay').innerText = bpm;
+        resetPlayhead();
+        generatePhrases();
+        renderScore();
+    }
+
+    function saveToJSON() {
+        currentSong.bpm = bpm;
+        document.getElementById('json-input').value = JSON.stringify(currentSong, null, 4);
+        document.getElementById('json-panel').style.display = 'block';
+    }
+
+    function copyToClipboard() {
+        document.getElementById('json-input').select();
+        document.execCommand('copy');
+    }
+
+    // --- VOICE ---
+    function loadVoices() {
+        availableVoices = window.speechSynthesis.getVoices();
+        const select = document.getElementById('voiceSelect');
+        select.innerHTML = "";
+        
+        availableVoices.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v.name;
+            opt.innerText = v.name.substring(0, 20) + (v.name.length>20?'...':'');
+            select.appendChild(opt);
+        });
+
+        let target = availableVoices.find(v => v.name === "Google 國語（臺灣）") || 
+                     availableVoices.find(v => v.lang.includes('zh'));
+        
+        if (target) {
+            select.value = target.name;
+            selectedVoice = target;
+        } else if (availableVoices.length) {
+            selectedVoice = availableVoices[0];
+            select.value = availableVoices[0].name;
+        }
+    }
+    
+    function updateVoice() {
+        selectedVoice = availableVoices.find(v => v.name === document.getElementById('voiceSelect').value);
+    }
+
+    // --- LOGIC ---
+    function generatePhrases() {
+        phraseCache = {}; 
+        let currentPhrase = "";
+        let startKey = null;
+
+        currentSong.timeline.forEach((m, mIdx) => {
+            m.txt.forEach((txt, bIdx) => {
+                let parts = txt.split('/');
+                let hz = parts.length > 1 ? parts[1] : txt;
+                let key = `${mIdx}-${bIdx}`;
+                
+                if (hz) {
+                    if (!currentPhrase) startKey = key;
+                    currentPhrase += hz;
+                } else {
+                    if (currentPhrase && startKey) {
+                        phraseCache[startKey] = currentPhrase;
+                        currentPhrase = "";
+                        startKey = null;
+                    }
+                }
+            });
+        });
+        if (currentPhrase && startKey) phraseCache[startKey] = currentPhrase;
+    }
+
+    function renderScore() {
+        const wrapper = document.getElementById('zoom-wrapper');
+        wrapper.innerHTML = '';
+        
+        currentSong.timeline.forEach((m, mIdx) => {
+            const mDiv = document.createElement('div');
+            mDiv.className = 'measure';
+            mDiv.id = `m-${mIdx}`;
+            
+            const info = document.createElement('div');
+            info.className = 'measure-info';
+            info.innerHTML = `<span>${mIdx+1}</span>` + (m.section ? `<span class="sect-label">${m.section}</span>` : ``);
+            mDiv.appendChild(info);
+
+            const row = document.createElement('div');
+            row.className = 'beats-row';
+
+            for (let b=0; b<4; b++) {
+                const bDiv = document.createElement('div');
+                bDiv.className = 'beat';
+                bDiv.id = `b-${mIdx}-${b}`;
+                if(phraseCache[`${mIdx}-${b}`]) bDiv.classList.add('phrase-start');
+
+                bDiv.onclick = (e) => {
+                    if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') seekTo(mIdx, b);
+                };
+
+                // Chord
+                if (b === 0) {
+                    const cIn = document.createElement('input');
+                    cIn.className = 'chord-edit';
+                    cIn.value = m.ch || '';
+                    cIn.onchange = (e) => { m.ch = e.target.value; };
+                    bDiv.appendChild(cIn);
+                } else {
+                    bDiv.innerHTML += '<div style="height:18px"></div>';
+                }
+
+                // Lyric Data Parsing
+                let rawText = m.txt[b] || "";
+                let parts = rawText.split('/');
+                let py = parts.length > 0 ? parts[0] : "";
+                let hz = parts.length > 1 ? parts[1] : "";
+                let transWord = parts.length > 2 ? parts[2] : "";
+
+                // Pinyin
+                const pDiv = document.createElement('div');
+                pDiv.className = 'pinyin-sub';
+                pDiv.innerText = py;
+                bDiv.appendChild(pDiv);
+
+                // Hanzi Input
+                const lIn = document.createElement('input');
+                lIn.className = 'lyric-edit';
+                lIn.value = hz;
+                lIn.onfocus = (e) => {
+                    bDiv.classList.add('editing');
+                    e.target.value = m.txt[b] || ""; // Show full source on edit
+                };
+                lIn.onblur = (e) => {
+                    bDiv.classList.remove('editing');
+                    m.txt[b] = e.target.value;
+                    generatePhrases();
+                    renderScore(); 
+                };
+                lIn.onkeydown = (e) => { if(e.key === 'Enter') lIn.blur(); };
+                bDiv.appendChild(lIn);
+
+                // Word Translation (Restored)
+                const tDiv = document.createElement('div');
+                tDiv.className = 'trans-sub';
+                tDiv.innerText = transWord;
+                bDiv.appendChild(tDiv);
+
+                row.appendChild(bDiv);
+            }
+            mDiv.appendChild(row);
+
+            // --- TEXTAREA FOR POETRY (Inside Measure) ---
+            const transInput = document.createElement('textarea');
+            transInput.className = 'measure-trans';
+            transInput.value = m.trans || "";
+            transInput.placeholder = "...";
+            transInput.onchange = (e) => {
+                m.trans = e.target.value;
+            };
+            // Auto-resize logic on render
+            if(m.trans && m.trans.length > 15) {
+                 // rough height estimate
+            }
+
+            mDiv.appendChild(transInput);
+
+            wrapper.appendChild(mDiv);
+        });
+    }
+
+    // --- AUDIO & SYNC ---
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            updateVol();
+            masterGain.connect(audioCtx.destination);
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function togglePlay() { 
+        initAudio(); 
+        if(isPlaying) stop(); else play(); 
+    }
+
+    function play() {
+        if (isPlaying) return;
+        isPlaying = true;
+        nextNoteTime = audioCtx.currentTime + 0.1;
+        document.getElementById('playBtn').innerText = "⏸ PAUSE";
+        document.getElementById('playBtn').classList.add('playing');
+        timerID = setInterval(scheduler, lookahead);
+    }
+
+    function stop() {
+        isPlaying = false;
+        clearInterval(timerID);
+        window.speechSynthesis.cancel();
+        document.getElementById('playBtn').innerText = "▶ PLAY";
+        document.getElementById('playBtn').classList.remove('playing');
+        document.querySelectorAll('.beat.active').forEach(e => e.classList.remove('active'));
+        notesInQueue = [];
+    }
+
+    function resetPlayhead() {
+        currentBar = 0;
+        currentBeat = 0;
+        notesInQueue = [];
+    }
+
+    function scheduler() {
+        while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
+            scheduleNote(currentBar, currentBeat, nextNoteTime);
+            nextNote();
+        }
+    }
+
+    function scheduleNote(bar, beat, time) {
+        notesInQueue.push({ noteTime: time, bar: bar, beat: beat });
+        if (bar >= currentSong.timeline.length) return;
+
+        let m = currentSong.timeline[bar];
+        if (m && m.ch) playSound(m.ch, beat, time);
+
+        if (isTTS) {
+             let key = `${bar}-${beat}`;
+             if(phraseCache[key]) {
+                 let now = audioCtx.currentTime;
+                 let delaySeconds = time - now; 
+                 let timeoutMs = (delaySeconds * 1000) - ttsOffset;
+                 if (timeoutMs < 0) timeoutMs = 0;
+                 setTimeout(() => { if (isPlaying) speakPhrase(phraseCache[key]); }, timeoutMs);
+             }
+        }
+    }
+
+    function nextNote() {
+        const secondsPerBeat = 60.0 / bpm;
+        nextNoteTime += secondsPerBeat;
+        currentBeat++;
+        if (currentBeat === 4) {
+            currentBeat = 0;
+            currentBar++;
+            if (currentBar >= currentSong.timeline.length) {
+                setTimeout(() => stop(), 2000); 
+                isPlaying = false; 
+                clearInterval(timerID);
+            }
+        }
+    }
+
+    function draw() {
+        let currentTime = audioCtx ? audioCtx.currentTime : 0;
+        while (notesInQueue.length && notesInQueue[0].noteTime < currentTime) {
+            let currentNote = notesInQueue[0];
+            notesInQueue.splice(0,1); 
+            updateHighlight(currentNote.bar, currentNote.beat);
+        }
+        requestAnimationFrame(draw);
+    }
+
+    function getFreqs(chord, isWeak) {
+        if (!chord) return [];
+        let root = chord.match(/^[A-G][#b]?/)[0];
+        let type = chord.slice(root.length);
+        let idx = semitones.findIndex(n => n === root);
+        if(idx === -1) return [];
+        let shift = isCapo ? 3 : 0;
+        let realIdx = (idx + shift) % 12;
+        let base = noteMap[semitones[realIdx]];
+        let f1 = base / 2;
+        let f2 = type.includes('m') ? f1*Math.pow(2, 3/12) : f1*Math.pow(2, 4/12);
+        let f3 = f1*Math.pow(2, 7/12);
+        let f4 = f1*2;
+        return isWeak ? [f2, f3, f4] : [f1, f2, f3, f4];
+    }
+
+    function playSound(chord, beat, time) {
+        if (!audioCtx || !masterGain || !chord) return;
+        let isWeak = beat > 0;
+        let freqs = getFreqs(chord, isWeak);
+        let dur = isWeak ? 0.08 : 0.12; 
+        let type = document.getElementById('instSelect').value || 'sawtooth';
+
+        freqs.forEach((f, i) => {
+            let o = audioCtx.createOscillator();
+            let g = audioCtx.createGain();
+            o.type = type; 
+            o.frequency.value = f;
+            
+            let start = time + i*(isWeak?0.004:0.008); 
+            g.gain.setValueAtTime(0, start);
+            g.gain.linearRampToValueAtTime(isWeak?0.2:0.3, start+0.01);
+            g.gain.exponentialRampToValueAtTime(0.001, start+dur+0.1);
+            
+            o.connect(g); g.connect(masterGain);
+            o.start(start); o.stop(start+dur+0.2);
+        });
+    }
+
+    function seekTo(m, b) {
+        let wasPlaying = isPlaying;
+        if(wasPlaying) stop();
+        
+        currentBar = m;
+        currentBeat = b;
+        updateHighlight(m, b);
+
+        if(wasPlaying) play();
+        else {
+            let txt = currentSong.timeline[m].txt[b];
+            let parts = txt.split('/');
+            let hz = parts.length > 1 ? parts[1] : txt;
+            if(hz) speakPhrase(hz);
+        }
+    }
+
+    function speakPhrase(text) {
+        window.speechSynthesis.cancel();
+        let u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-CN';
+        u.rate = ttsRate;
+        if(selectedVoice) u.voice = selectedVoice;
+        window.speechSynthesis.speak(u);
+    }
+
+    function updateHighlight(m, b) {
+        document.querySelectorAll('.beat.active').forEach(e => e.classList.remove('active'));
+        const el = document.getElementById(`b-${m}-${b}`);
+        if(el) {
+            el.classList.add('active');
+            el.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
+        }
+    }
+
+    function updateVol() { 
+        let v = document.getElementById('volRange').value;
+        document.getElementById('volDisplay').innerText = v;
+        if(masterGain) masterGain.gain.value = v/100; 
+    }
+    function updateSpeed() { 
+        bpm = parseInt(document.getElementById('bpmRange').value); 
+        document.getElementById('bpmDisplay').innerText = bpm; 
+    }
+    function updateRate() {
+        ttsRate = parseFloat(document.getElementById('rateRange').value);
+        document.getElementById('rateDisplay').innerText = ttsRate.toFixed(1);
+    }
+    function updateOffset() {
+        ttsOffset = parseInt(document.getElementById('offsetRange').value);
+        document.getElementById('offsetDisplay').innerText = ttsOffset;
+    }
+    function toggleTTS() { 
+        isTTS = !isTTS; 
+        document.getElementById('ttsBtn').innerText = isTTS?"🗣️ Слова: ВКЛ":"🗣️ Слова: ВЫКЛ"; 
+    }
+    function toggleCapo() { 
+        isCapo = !isCapo; 
+        document.getElementById('capoBtn').classList.toggle('active', isCapo); 
+    }
+
+    init();
+
+</script>
+</body>
+</html>
