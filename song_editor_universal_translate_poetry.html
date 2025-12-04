@@ -132,7 +132,7 @@
             font-weight: bold; 
             min-width: 50px;
         }
-        input[type=range] { width: 100px; cursor: pointer; height: 8px; margin: 1px 0; }
+        input[type=range] { width: 130px; cursor: pointer; height: 8px; margin: 1px 0; }
 
         select {
             background: #333;
@@ -346,8 +346,8 @@
         </div>
 
         <div class="param-group">
-            <span>Sync: <span id="offsetDisplay">600</span>ms</span>
-            <input type="range" id="offsetRange" min="0" max="1000" step="10" value="600" oninput="updateOffset()">
+            <span>Sync: <span id="offsetDisplay">300</span>ms</span>
+            <input type="range" id="offsetRange" min="0" max="1000" step="10" value="300" oninput="updateOffset()">
         </div>
 
         <button class="ctrl-btn stop-btn" id="ttsBtn" onclick="toggleTTS()">🗣️ Слова</button>
@@ -508,7 +508,13 @@
     // TIMING VARIABLES
     let isPlaying = false;
     let lookahead = 25.0; 
-    let scheduleAheadTime = 0.1;
+    
+    // === ВАЖНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ ===
+    // Было 0.1. Ставим 1.5, чтобы можно было планировать события 
+    // более чем за 1000мс (максимум вашего ползунка Sync)
+    let scheduleAheadTime = 1.5; 
+    // ==============================
+
     let nextNoteTime = 0.0;
     let timerID; 
     let notesInQueue = []; 
@@ -518,9 +524,9 @@
     let currentBeat = 0;
     
     // Preferences
-    let bpm = 150; 
+    let bpm = 140; // Чуть поправил дефолт под песню
     let ttsRate = 0.6; 
-    let ttsOffset = 300; 
+    let ttsOffset = 600; // Дефолтное значение
     let isCapo = true;
     let isTTS = true;
     
@@ -764,7 +770,7 @@
     function stop() {
         isPlaying = false;
         clearInterval(timerID);
-        window.speechSynthesis.cancel();
+        window.speechSynthesis.cancel(); // Резко обрываем текущую речь
         document.getElementById('playBtn').innerText = "▶ PLAY";
         document.getElementById('playBtn').classList.remove('playing');
         document.querySelectorAll('.beat.active').forEach(e => e.classList.remove('active'));
@@ -789,16 +795,29 @@
         if (bar >= currentSong.timeline.length) return;
 
         let m = currentSong.timeline[bar];
+        // Планируем звук инструмента (Web Audio API само знает, что time - это будущее)
         if (m && m.ch) playSound(m.ch, beat, time);
 
+        // Планируем речь (TTS)
         if (isTTS) {
              let key = `${bar}-${beat}`;
              if(phraseCache[key]) {
                  let now = audioCtx.currentTime;
+                 // Сколько секунд осталось до момента звучания ноты?
                  let delaySeconds = time - now; 
+                 
+                 // Вычитаем Offset (Sync). 
+                 // Например: до ноты 1.0 сек, Sync 0.6 сек (600мс).
+                 // 1000 - 600 = 400мс. Таймер сработает через 400мс (за 600мс до музыки).
                  let timeoutMs = (delaySeconds * 1000) - ttsOffset;
+                 
+                 // Если offset слишком большой (больше чем времени до ноты), говорим сразу (0)
                  if (timeoutMs < 0) timeoutMs = 0;
-                 setTimeout(() => { if (isPlaying) speakPhrase(phraseCache[key]); }, timeoutMs);
+
+                 setTimeout(() => { 
+                     // Проверяем isPlaying, чтобы не заговорило, если мы уже нажали Стоп
+                     if (isPlaying) speakPhrase(phraseCache[key]); 
+                 }, timeoutMs);
              }
         }
     }
