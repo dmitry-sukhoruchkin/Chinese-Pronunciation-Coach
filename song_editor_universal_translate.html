@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Music & Lyric Editor + Teleprompter</title>
+    <title>Universal Music Editor (Precision Timing)</title>
     <style>
         :root {
             --bg: #1e1e1e;
@@ -16,7 +16,7 @@
             --measure-border: 1px solid #555;
             --phrase-marker: #00e676;
             --accent: #2196f3;
-            --trans-color: #4fc3f7; /* Цвет для перевода слов */
+            --trans-color: #4fc3f7;
         }
 
         body {
@@ -61,7 +61,7 @@
         }
 
         #json-panel {
-            display: none; /* Hidden by default */
+            display: none;
             padding: 10px;
             background: #222;
             border-bottom: 1px solid #444;
@@ -130,7 +130,7 @@
             font-weight: bold; 
             min-width: 50px;
         }
-        input[type=range] { width: 80px; cursor: pointer; height: 10px; margin: 2px 0; }
+        input[type=range] { width: 100px; cursor: pointer; height: 10px; margin: 2px 0; }
 
         select {
             background: #333;
@@ -185,7 +185,6 @@
         }
         .sect-label { color: #ffb74d; font-weight: bold; }
 
-        /* Увеличили высоту строки, чтобы вместить перевод */
         .beats-row { display: flex; height: 75px; }
 
         .beat {
@@ -194,10 +193,10 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: flex-start; /* Changed to flex-start for absolute positioning control */
+            justify-content: flex-start;
             position: relative;
             cursor: pointer;
-            transition: background 0.05s;
+            transition: background 0.02s; /* Super fast transition for strict timing */
         }
         .beat:last-child { border-right: none; }
         .beat:hover { background: #444; }
@@ -215,7 +214,7 @@
         .beat.editing .lyric-edit { 
             font-size: 11px; font-family: monospace; 
             background: #444; color: #fff;
-            margin-top: 20px; /* Center while editing */
+            margin-top: 20px;
         }
 
         .beat.phrase-start { border-bottom: 4px solid var(--phrase-marker); }
@@ -237,7 +236,7 @@
             overflow: hidden; white-space: nowrap;
             cursor: pointer;
             position: absolute;
-            top: 32px; /* Centered vertically relative to pinyin/trans */
+            top: 32px;
             z-index: 2;
         }
 
@@ -248,7 +247,6 @@
             transition: opacity 0.1s;
         }
         
-        /* Новый класс для перевода под иероглифом */
         .trans-sub {
             font-size: 9px; color: var(--trans-color);
             pointer-events: none; position: absolute;
@@ -324,7 +322,6 @@
             <div class="json-actions">
                 <button class="action-btn btn-load" onclick="loadFromInput()">📥 LOAD JSON</button>
                 <button class="action-btn btn-copy" onclick="copyToClipboard()">📋 COPY</button>
-                <span style="color:#666; font-size:10px; align-self:center;">Paste new JSON to load another song.</span>
             </div>
         </div>
     </div>
@@ -334,8 +331,8 @@
         <button class="ctrl-btn stop-btn" onclick="stop()">⏹ STOP</button>
         
         <div class="param-group">
-            <span>BPM: <span id="bpmDisplay">150</span></span>
-            <input type="range" id="bpmRange" min="60" max="180" value="150" oninput="updateSpeed()">
+            <span>BPM: <span id="bpmDisplay">140</span></span>
+            <input type="range" id="bpmRange" min="60" max="180" value="140" oninput="updateSpeed()">
         </div>
 
         <div class="param-group">
@@ -360,8 +357,8 @@
         </div>
 
         <div class="param-group">
-            <span>Sync: <span id="offsetDisplay">600</span>ms</span>
-            <input type="range" id="offsetRange" min="0" max="1000" step="10" value="600" oninput="updateOffset()">
+            <span>Sync: <span id="offsetDisplay">300</span>ms</span>
+            <input type="range" id="offsetRange" min="0" max="1000" step="10" value="300" oninput="updateOffset()">
         </div>
 
         <button class="ctrl-btn stop-btn" id="ttsBtn" onclick="toggleTTS()">🗣️ Слова</button>
@@ -374,19 +371,16 @@
         <div id="zoom-wrapper"></div>
     </div>
 
-    <!-- TELEPROMPTER CONTAINER -->
     <div id="teleprompter-container">
-        <ul id="lyrics-list">
-            <!-- Lines injected via JS -->
-        </ul>
+        <ul id="lyrics-list"></ul>
     </div>
 
 <script>
-    // --- DEFAULT SONG DATA (With Translations) ---
+    // --- DEFAULT SONG DATA ---
     const defaultSong = {
         title: "G.E.M. - 桃花诺 (Tao Hua Nuo)",
         subtitle: "A Life of Love and Obsession",
-        bpm: 150,
+        bpm: 140,
         timeline: [
             { "section": "Intro", "ch": "F", "txt": ["","","",""], "trans": "(Вступление)" },
             { "ch": "G", "txt": ["","","",""] },
@@ -510,42 +504,50 @@
             { "ch": "C", "txt": ["","","",""] }
         ]
     };
-
     // --- GLOBAL STATE ---
-    let currentSong = JSON.parse(JSON.stringify(defaultSong)); // Deep copy
+    let currentSong = JSON.parse(JSON.stringify(defaultSong));
     let audioCtx = null;
     let masterGain = null;
+    
+    // TIMING VARIABLES (WEB AUDIO CLOCK)
     let isPlaying = false;
-    let isCapo = true;
-    let isTTS = true;
-    let bpm = 140; 
-    let ttsRate = 0.6; 
+    let lookahead = 25.0; // How frequently to call scheduling function (in milliseconds)
+    let scheduleAheadTime = 0.1; // How far ahead to schedule audio (in seconds)
+    let nextNoteTime = 0.0; // when the next note is due.
+    let timerID; // setInterval ID
+    let notesInQueue = []; // For UI synchronization
+
+    // State
     let currentBar = 0;
     let currentBeat = 0;
-    let mainTimer = null;
-    let lookaheadTimer = null; 
-    let ttsOffset = 600; 
+    
+    // Preferences
+    let bpm = 150; 
+    let ttsRate = 0.6; 
+    let ttsOffset = 300; 
+    let isCapo = true;
+    let isTTS = true;
     
     let selectedVoice = null;
     let availableVoices = [];
     let phraseCache = {}; 
-    let lyricLines = []; // For teleprompter
+    let lyricLines = []; 
 
     const noteMap = {'C':261.63,'C#':277.18,'Db':277.18,'D':293.66,'D#':311.13,'Eb':311.13,'E':329.63,'F':349.23,'F#':369.99,'Gb':369.99,'G':392.00,'G#':415.30,'Ab':415.30,'A':440.00,'A#':466.16,'Bb':466.16,'B':493.88};
     const semitones = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
     // --- INIT ---
     function init() {
-        // Set initial JSON string in box
         document.getElementById('json-input').value = JSON.stringify(currentSong, null, 4);
-        
         applySongData();
-        
         window.speechSynthesis.onvoiceschanged = loadVoices;
         loadVoices(); 
+        
+        // Start the UI drawing loop
+        requestAnimationFrame(draw);
     }
 
-    // --- JSON EDITOR LOGIC ---
+    // --- JSON EDITOR ---
     function toggleJsonPanel() {
         const p = document.getElementById('json-panel');
         p.style.display = (p.style.display === 'block') ? 'none' : 'block';
@@ -555,54 +557,40 @@
         try {
             const raw = document.getElementById('json-input').value;
             const parsed = JSON.parse(raw);
-            if(!parsed.timeline) throw new Error("Missing 'timeline' array");
-            
-            // Success
+            if(!parsed.timeline) throw new Error("Missing 'timeline'");
             stop();
             currentSong = parsed;
             applySongData();
-            // Hide panel after success
             document.getElementById('json-panel').style.display = 'none';
         } catch(e) {
-            alert("Error parsing JSON: " + e.message);
+            alert("Error: " + e.message);
         }
     }
 
     function applySongData() {
-        // Update DOM elements
         document.getElementById('song-title').innerText = currentSong.title || "Untitled";
         document.getElementById('song-subtitle').innerText = currentSong.subtitle || "";
-        
-        // Update BPM
         bpm = currentSong.bpm || 120;
         document.getElementById('bpmRange').value = bpm;
         document.getElementById('bpmDisplay').innerText = bpm;
-
-        // Reset Playback
-        currentBar = 0; currentBeat = 0;
-        
-        // Re-Generate
+        resetPlayhead();
         generatePhrases();
-        buildTeleprompterList(); // Build the bottom list
+        buildTeleprompterList(); 
         renderScore();
     }
 
     function saveToJSON() {
-        // Just formats current state into the box
-        currentSong.bpm = bpm; // Save current BPM preference
-        const str = JSON.stringify(currentSong, null, 4);
-        document.getElementById('json-input').value = str;
+        currentSong.bpm = bpm;
+        document.getElementById('json-input').value = JSON.stringify(currentSong, null, 4);
         document.getElementById('json-panel').style.display = 'block';
-        alert("Changes saved to JSON box! You can copy it now.");
     }
 
     function copyToClipboard() {
-        const txt = document.getElementById('json-input');
-        txt.select();
+        document.getElementById('json-input').select();
         document.execCommand('copy');
     }
 
-    // --- VOICE LOADING ---
+    // --- VOICE ---
     function loadVoices() {
         availableVoices = window.speechSynthesis.getVoices();
         const select = document.getElementById('voiceSelect');
@@ -611,58 +599,50 @@
         availableVoices.forEach(v => {
             const opt = document.createElement('option');
             opt.value = v.name;
-            opt.innerText = v.name.substring(0, 20) + (v.name.length>20 ? '...' : '');
+            opt.innerText = v.name.substring(0, 20) + (v.name.length>20?'...':'');
             select.appendChild(opt);
         });
 
-        let target = availableVoices.find(v => v.name === "Google 國語（臺灣）");
-        if (!target) target = availableVoices.find(v => v.lang.includes('TW') || v.name.includes('Taiwan'));
-        if (!target) target = availableVoices.find(v => v.lang.includes('CN') || v.name.includes('China') || v.lang.includes('zh'));
-
+        let target = availableVoices.find(v => v.name === "Google 國語（臺灣）") || 
+                     availableVoices.find(v => v.lang.includes('zh'));
+        
         if (target) {
             select.value = target.name;
             selectedVoice = target;
-        } else if (availableVoices.length > 0) {
+        } else if (availableVoices.length) {
             selectedVoice = availableVoices[0];
             select.value = availableVoices[0].name;
         }
-        updateVoice();
     }
-
+    
     function updateVoice() {
-        const name = document.getElementById('voiceSelect').value;
-        selectedVoice = availableVoices.find(v => v.name === name);
+        selectedVoice = availableVoices.find(v => v.name === document.getElementById('voiceSelect').value);
     }
 
     // --- LOGIC ---
     function generatePhrases() {
         phraseCache = {}; 
-        let allBeats = [];
-        currentSong.timeline.forEach((m, mIdx) => {
-            m.txt.forEach((txt, bIdx) => {
-                // Handle "pinyin/hanzi/meaning" format or just "hanzi"
-                let parts = txt.split('/');
-                let hz = parts.length > 1 ? parts[1] : txt;
-                allBeats.push({ text: hz, key: `${mIdx}-${bIdx}` });
-            });
-        });
-
         let currentPhrase = "";
         let startKey = null;
 
-        for (let i = 0; i < allBeats.length; i++) {
-            let item = allBeats[i];
-            if (item.text) {
-                if (!currentPhrase) startKey = item.key;
-                currentPhrase += item.text;
-            } else {
-                if (currentPhrase && startKey) {
-                    phraseCache[startKey] = currentPhrase;
-                    currentPhrase = "";
-                    startKey = null;
+        currentSong.timeline.forEach((m, mIdx) => {
+            m.txt.forEach((txt, bIdx) => {
+                let parts = txt.split('/');
+                let hz = parts.length > 1 ? parts[1] : txt;
+                let key = `${mIdx}-${bIdx}`;
+                
+                if (hz) {
+                    if (!currentPhrase) startKey = key;
+                    currentPhrase += hz;
+                } else {
+                    if (currentPhrase && startKey) {
+                        phraseCache[startKey] = currentPhrase;
+                        currentPhrase = "";
+                        startKey = null;
+                    }
                 }
-            }
-        }
+            });
+        });
         if (currentPhrase && startKey) phraseCache[startKey] = currentPhrase;
     }
 
@@ -673,11 +653,7 @@
         
         currentSong.timeline.forEach((m, idx) => {
             if (m.trans) {
-                lyricLines.push({
-                    measureIdx: idx,
-                    text: m.trans,
-                    id: `lyric-${idx}`
-                });
+                lyricLines.push({ measureIdx: idx, text: m.trans, id: `lyric-${idx}` });
             }
         });
 
@@ -712,18 +688,13 @@
                 const bDiv = document.createElement('div');
                 bDiv.className = 'beat';
                 bDiv.id = `b-${mIdx}-${b}`;
-                
-                if(phraseCache[`${mIdx}-${b}`]) {
-                    bDiv.classList.add('phrase-start');
-                }
+                if(phraseCache[`${mIdx}-${b}`]) bDiv.classList.add('phrase-start');
 
                 bDiv.onclick = (e) => {
-                    if(e.target.tagName !== 'INPUT') {
-                        seekTo(mIdx, b);
-                    }
+                    if(e.target.tagName !== 'INPUT') seekTo(mIdx, b);
                 };
 
-                // CHORD
+                // Chord
                 if (b === 0) {
                     const cIn = document.createElement('input');
                     cIn.className = 'chord-edit';
@@ -734,55 +705,47 @@
                     bDiv.innerHTML += '<div style="height:18px"></div>';
                 }
 
-                // LYRIC (Smart)
+                // Lyric
                 const lIn = document.createElement('input');
                 lIn.className = 'lyric-edit';
-                
                 let rawText = m.txt[b] || "";
-                // Handle "pinyin/hanzi/meaning"
                 let parts = rawText.split('/');
                 let py = parts.length > 1 ? parts[0] : "";
                 let hz = parts.length > 1 ? parts[1] : rawText;
-                let tr = parts.length > 2 ? parts[2] : ""; // Extract translation
-                
+                let tr = parts.length > 2 ? parts[2] : "";
                 lIn.value = hz;
 
                 lIn.onfocus = (e) => {
                     bDiv.classList.add('editing');
                     e.target.value = m.txt[b] || "";
-                    e.target.select();
                 };
-
                 lIn.onblur = (e) => {
                     bDiv.classList.remove('editing');
                     m.txt[b] = e.target.value;
                     generatePhrases();
                     renderScore(); 
                 };
+                lIn.onkeydown = (e) => { if(e.key === 'Enter') lIn.blur(); };
 
-                lIn.onkeydown = (e) => {
-                    if(e.key === 'Enter') lIn.blur();
-                };
-
-                // Pinyin Element
                 const pDiv = document.createElement('div');
                 pDiv.className = 'pinyin-sub';
                 pDiv.innerText = py;
                 
-                // Translation Element (New)
                 const tDiv = document.createElement('div');
                 tDiv.className = 'trans-sub';
                 tDiv.innerText = tr;
 
                 bDiv.appendChild(pDiv);
                 bDiv.appendChild(lIn);
-                bDiv.appendChild(tDiv); // Append translation
+                bDiv.appendChild(tDiv);
                 row.appendChild(bDiv);
             }
             mDiv.appendChild(row);
             wrapper.appendChild(mDiv);
         });
     }
+
+    // --- ACCURATE AUDIO ENGINE ---
 
     function initAudio() {
         if (!audioCtx) {
@@ -794,6 +757,121 @@
         if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
+    function togglePlay() { 
+        initAudio(); 
+        if(isPlaying) stop(); else play(); 
+    }
+
+    function play() {
+        if (isPlaying) return;
+        isPlaying = true;
+        
+        // IMPORTANT: Set Start Time
+        nextNoteTime = audioCtx.currentTime + 0.1;
+        
+        document.getElementById('playBtn').innerText = "⏸ PAUSE";
+        document.getElementById('playBtn').classList.add('playing');
+        
+        // Start Scheduler Loop
+        timerID = setInterval(scheduler, lookahead);
+    }
+
+    function stop() {
+        isPlaying = false;
+        clearInterval(timerID);
+        window.speechSynthesis.cancel();
+        document.getElementById('playBtn').innerText = "▶ PLAY";
+        document.getElementById('playBtn').classList.remove('playing');
+        
+        // Clear UI
+        document.querySelectorAll('.beat.active').forEach(e => e.classList.remove('active'));
+        document.querySelectorAll('.lyric-line.active').forEach(e => e.classList.remove('active'));
+        notesInQueue = [];
+    }
+
+    function resetPlayhead() {
+        currentBar = 0;
+        currentBeat = 0;
+        notesInQueue = [];
+    }
+
+    function scheduler() {
+        // While there are notes that will need to play before the next interval, schedule them
+        while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
+            scheduleNote(currentBar, currentBeat, nextNoteTime);
+            nextNote();
+        }
+    }
+
+    function scheduleNote(bar, beat, time) {
+        // 1. Push to UI queue for requestAnimationFrame
+        notesInQueue.push({ noteTime: time, bar: bar, beat: beat });
+
+        if (bar >= currentSong.timeline.length) return;
+
+        // 2. Play Audio (Oscillator)
+        let m = currentSong.timeline[bar];
+        if (m && m.ch) {
+            playSound(m.ch, beat, time);
+        }
+
+        // 3. Schedule TTS (Calculated offset from the strict audio time)
+        if (isTTS) {
+             let key = `${bar}-${beat}`;
+             if(phraseCache[key]) {
+                 // Calculate delay until the note time
+                 let now = audioCtx.currentTime;
+                 let delaySeconds = time - now; 
+                 // Convert to ms and subtract the user offset (lookahead for TTS)
+                 let timeoutMs = (delaySeconds * 1000) - ttsOffset;
+                 
+                 if (timeoutMs < 0) timeoutMs = 0;
+                 
+                 setTimeout(() => {
+                     if (isPlaying) speakPhrase(phraseCache[key]);
+                 }, timeoutMs);
+             }
+        }
+    }
+
+    function nextNote() {
+        const secondsPerBeat = 60.0 / bpm;
+        nextNoteTime += secondsPerBeat; // Add beat length to last beat time
+
+        currentBeat++;
+        if (currentBeat === 4) {
+            currentBeat = 0;
+            currentBar++;
+            if (currentBar >= currentSong.timeline.length) {
+                // We don't stop here instantly, let the scheduler run out
+                // But generally, we can loop or stop logic elsewhere.
+                // For this editor, let's wrap around or stop? 
+                // Let's Loop for now or just let it run out. 
+                // To stop correctly:
+                setTimeout(() => stop(), 2000); 
+                isPlaying = false; // Prevent further scheduling
+                clearInterval(timerID);
+            }
+        }
+    }
+
+    // --- VISUAL SYNC (Decoupled from Logic) ---
+    function draw() {
+        let currentTime = audioCtx ? audioCtx.currentTime : 0;
+
+        while (notesInQueue.length && notesInQueue[0].noteTime < currentTime) {
+            let currentNote = notesInQueue[0];
+            notesInQueue.splice(0,1); // Remove from queue
+            
+            // Draw UI
+            updateHighlight(currentNote.bar, currentNote.beat);
+            syncTeleprompter(currentNote.bar);
+        }
+
+        requestAnimationFrame(draw);
+    }
+
+    // --- SOUND GEN ---
     function getFreqs(chord, isWeak) {
         if (!chord) return [];
         let root = chord.match(/^[A-G][#b]?/)[0];
@@ -810,13 +888,11 @@
         return isWeak ? [f2, f3, f4] : [f1, f2, f3, f4];
     }
 
-    function playSound(chord, beat) {
+    function playSound(chord, beat, time) {
         if (!audioCtx || !masterGain || !chord) return;
         let isWeak = beat > 0;
         let freqs = getFreqs(chord, isWeak);
-        let now = audioCtx.currentTime;
         let dur = isWeak ? 0.08 : 0.12; 
-        
         let type = document.getElementById('instSelect').value || 'sawtooth';
 
         freqs.forEach((f, i) => {
@@ -825,7 +901,7 @@
             o.type = type; 
             o.frequency.value = f;
             
-            let start = now + i*(isWeak?0.004:0.008);
+            let start = time + i*(isWeak?0.004:0.008); // Use exact scheduled time
             g.gain.setValueAtTime(0, start);
             g.gain.linearRampToValueAtTime(isWeak?0.2:0.3, start+0.01);
             g.gain.exponentialRampToValueAtTime(0.001, start+dur+0.1);
@@ -835,49 +911,17 @@
         });
     }
 
-    function togglePlay() { 
-        initAudio(); 
-        if(isPlaying) stop(); else play(); 
-    }
-    
-    function play() {
-        if(isPlaying) return;
-        isPlaying = true;
-        document.getElementById('playBtn').innerText = "⏸ PAUSE";
-        document.getElementById('playBtn').classList.add('playing');
-        
-        if(isTTS) {
-             let key = `${currentBar}-${currentBeat}`;
-             if(phraseCache[key]) speakPhrase(phraseCache[key]);
-        }
-        
-        tick();
-    }
-
-    function stop() {
-        isPlaying = false;
-        clearTimeout(mainTimer);
-        clearTimeout(lookaheadTimer);
-        window.speechSynthesis.cancel();
-        document.getElementById('playBtn').innerText = "▶ PLAY";
-        document.getElementById('playBtn').classList.remove('playing');
-        document.querySelectorAll('.beat.active').forEach(e => e.classList.remove('active'));
-        document.querySelectorAll('.lyric-line.active').forEach(e => e.classList.remove('active'));
-    }
-
     function seekTo(m, b) {
+        let wasPlaying = isPlaying;
+        if(wasPlaying) stop();
+        
         currentBar = m;
         currentBeat = b;
-        updateHighlight();
-        syncTeleprompter(); // Sync bottom text
+        updateHighlight(m, b);
+        syncTeleprompter(m);
 
-        if(isPlaying) {
-            clearTimeout(mainTimer);
-            clearTimeout(lookaheadTimer);
-            window.speechSynthesis.cancel();
-            if(isTTS && phraseCache[`${m}-${b}`]) speakPhrase(phraseCache[`${m}-${b}`]);
-            tick();
-        } else {
+        if(wasPlaying) play();
+        else {
             let txt = currentSong.timeline[m].txt[b];
             let parts = txt.split('/');
             let hz = parts.length > 1 ? parts[1] : txt;
@@ -894,67 +938,23 @@
         window.speechSynthesis.speak(u);
     }
 
-    function tick() {
-        if (!isPlaying) return;
-
-        if (currentBar >= currentSong.timeline.length) { 
-            currentBar=0; currentBeat=0; 
-            stop(); 
-            return; 
-        }
-
-        updateHighlight();
-        syncTeleprompter(); // Sync bottom text
-        
-        let m = currentSong.timeline[currentBar];
-        if (m.ch) playSound(m.ch, currentBeat);
-
-        const beatDuration = (60/bpm)*1000;
-        mainTimer = setTimeout(() => {
-            currentBeat++;
-            if(currentBeat >= 4) {
-                currentBeat = 0;
-                currentBar++;
-            }
-            tick();
-        }, beatDuration);
-
-        // SYNC
-        if (isTTS) {
-            let nextB = currentBeat + 1;
-            let nextM = currentBar;
-            if (nextB >= 4) { nextB = 0; nextM++; }
-
-            let nextKey = `${nextM}-${nextB}`;
-            if (phraseCache[nextKey]) {
-                let delay = beatDuration - ttsOffset;
-                if (delay < 0) delay = 0; 
-                lookaheadTimer = setTimeout(() => {
-                    if (isPlaying) speakPhrase(phraseCache[nextKey]);
-                }, delay);
-            }
-        }
-    }
-
-    function updateHighlight() {
+    function updateHighlight(m, b) {
         document.querySelectorAll('.beat.active').forEach(e => e.classList.remove('active'));
-        const el = document.getElementById(`b-${currentBar}-${currentBeat}`);
+        const el = document.getElementById(`b-${m}-${b}`);
         if(el) {
             el.classList.add('active');
             el.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
         }
     }
 
-    function syncTeleprompter() {
+    function syncTeleprompter(barIdx) {
         let activeLine = null;
-        // Find the closest previous lyric line
         for (let i = lyricLines.length - 1; i >= 0; i--) {
-            if (lyricLines[i].measureIdx <= currentBar) {
+            if (lyricLines[i].measureIdx <= barIdx) {
                 activeLine = lyricLines[i];
                 break;
             }
         }
-
         if (activeLine) {
             document.querySelectorAll('.lyric-line.active').forEach(e => {
                 if(e.id !== activeLine.id) e.classList.remove('active');
@@ -968,16 +968,15 @@
     }
 
     function updateVol() { 
-        let el = document.getElementById('volRange');
-        if(el) {
-            let v = el.value;
-            document.getElementById('volDisplay').innerText = v;
-            if(masterGain) masterGain.gain.value = v/100; 
-        }
+        let v = document.getElementById('volRange').value;
+        document.getElementById('volDisplay').innerText = v;
+        if(masterGain) masterGain.gain.value = v/100; 
     }
     function updateSpeed() { 
         bpm = parseInt(document.getElementById('bpmRange').value); 
         document.getElementById('bpmDisplay').innerText = bpm; 
+        // Note: Changing BPM while playing in this simple scheduler 
+        // will affect the NEXT beat duration, but won't cause drift.
     }
     function updateRate() {
         ttsRate = parseFloat(document.getElementById('rateRange').value);
