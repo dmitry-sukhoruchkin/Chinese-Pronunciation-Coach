@@ -5,7 +5,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="frame-ancestors https://vk.com https://vk.ru https://*.vk.com https://*.vk.ru">
     <title>Universal Music Editor (Large Fonts)</title>
     <style>
         :root {
@@ -297,20 +296,27 @@
         input:focus { outline: none; }
 
     </style>
-    <script src="https://vk.com/js/api/xd_connection.js?2"></script>
+<meta http-equiv="Content-Security-Policy" content="frame-ancestors https://vk.com https://vk.ru https://*.vk.com https://*.vk.ru">
+<script src="https://vk.com/js/api/xd_connection.js?2"></script>
 <script>
     window.addEventListener('DOMContentLoaded', function() {
         if (window !== window.top) {
-            // Инициализация VK API для iframe
-            VK.init({apiId: 54400743}); // Замените YOUR_APP_ID на реальный ID приложения
-            
-            // Обработка авторизации
-            VK.Auth.getLoginStatus(function(response) {
-                if (response.session) {
-                    console.log('Пользователь авторизован в VK');
-                } else {
-                    console.log('Пользователь не авторизован');
-                }
+            // Правильная инициализация с обработчиками
+            VK.init({
+                apiId: 54400743,
+                testMode: 1 // КРИТИЧЕСКИ ВАЖНО для тестового приложения!
+            }, function() {
+                console.log('VK API успешно инициализирован');
+                // Загружаем данные пользователя
+                VK.Api.call('users.get', { fields: 'photo_100' }, function(r) {
+                    if (r.response) {
+                        console.log('Пользователь:', r.response[0]);
+                    }
+                });
+            }, function() {
+                console.error('Ошибка инициализации VK API. Проверьте настройки приложения в VK Developers.');
+                // Показываем ошибку пользователю
+                alert('Ошибка инициализации приложения. Пожалуйста, откройте в отдельном окне.');
             });
         }
     });
@@ -923,6 +929,12 @@
     }
 
 function speakPhrase(text) {
+    console.log('TTS вызов:', text);
+    if (window !== window.top) {
+        console.log('Работает во фрейме VK - TTS недоступен');
+        showVKWarning();
+        return;
+    }
     // Проверка, работает ли приложение во фрейме VK
     if (window !== window.top) {
         // Показываем предупреждение пользователям ВК
