@@ -296,27 +296,6 @@
         input:focus { outline: none; }
 
     </style>
-
-<script src="https://vk.com/js/api/xd_connection.js?2"></script>
-<script>
-
-window.addEventListener('DOMContentLoaded', function() {
-    if (typeof VK !== 'undefined') {
-        VK.init({
-            apiId: 54400743,
-            // Для продакшена testMode: 0 или вообще убрать
-            testMode: 0
-        }, function() {
-            console.log('VK API успешно инициализирован');
-        }, function(error) {
-            console.error('Ошибка инициализации VK API:', error);
-        });
-    } else {
-        console.log('VK API не доступен (запущено не в ВК)');
-    }
-});
-
-</script>
 </head>
 <body>
 
@@ -382,6 +361,16 @@ window.addEventListener('DOMContentLoaded', function() {
     </div>
 
 <script>
+
+
+
+
+import bridge from '@vkontakte/vk-bridge';
+bridge.send('VKWebAppInit'); // Инициализация приложения
+// Для получения данных пользователя:
+const user = await bridge.send('VKWebAppGetUserInfo');
+
+
     // --- UPDATED SONG DATA (High Density Mode) ---
     // Формат txt: "пиньинь/иероглиф/перевод_слова"
     const defaultSong = {
@@ -984,23 +973,6 @@ function speakPhrase(text) {
 
     init();
 
-</script>
-<script>
-    // Обработка событий ВК для правильной навигации
-    if (window !== window.top) {
-        // Запрещаем переходы по ссылкам внутри фрейма
-        document.addEventListener('click', function(e) {
-            if (e.target.tagName === 'A' && e.target.href) {
-                e.preventDefault();
-                window.open(e.target.href, '_blank');
-            }
-        });
-        
-        // Обработка кнопки "Назад" в ВК
-        VK.addCallback('onLocationChanged', function(loc) {
-            console.log('Location changed in VK:', loc);
-        });
-    }
 </script>
 </body>
 </html>
