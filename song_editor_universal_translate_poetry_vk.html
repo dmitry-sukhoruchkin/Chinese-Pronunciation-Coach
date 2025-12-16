@@ -360,17 +360,15 @@
         <div id="zoom-wrapper"></div>
     </div>
 
+<script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 <script>
+  vkBridge.send('VKWebAppInit');
+  const urlParams = new URLSearchParams(window.location.search);
+const vkUserId = urlParams.get('vk_user_id'); // ID пользователя
+const vkPlatform = urlParams.get('vk_platform'); // desktop_web, mobile_android и 
+</script>
 
-
-
-
-import bridge from '@vkontakte/vk-bridge';
-bridge.send('VKWebAppInit'); // Инициализация приложения
-// Для получения данных пользователя:
-const user = await bridge.send('VKWebAppGetUserInfo');
-
-
+<script>
     // --- UPDATED SONG DATA (High Density Mode) ---
     // Формат txt: "пиньинь/иероглиф/перевод_слова"
     const defaultSong = {
