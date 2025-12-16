@@ -302,7 +302,7 @@
     window.addEventListener('DOMContentLoaded', function() {
         if (window !== window.top) {
             // Инициализация VK API для iframe
-            VK.init({apiId: YOUR_APP_ID}); // Замените YOUR_APP_ID на реальный ID приложения
+            VK.init({apiId: 54400743}); // Замените YOUR_APP_ID на реальный ID приложения
             
             // Обработка авторизации
             VK.Auth.getLoginStatus(function(response) {
@@ -957,7 +957,7 @@ function showVKWarning() {
     warning.innerHTML = '⚠️ Для полноценного обучения произношению откройте приложение в отдельном окне';
     warning.onclick = function() {
         // Открываем полную версию в новом окне
-        window.open('https://dmitry-sukhoruchkin.github.io/Chinese-Pronunciation-Coach/song_editor_universal_translate_poetry.html', '_blank');
+        window.open('https://dmitry-sukhoruchkin.github.io/Chinese-Pronunciation-Coach/song_editor_universal_translate_poetry_vk.html', '_blank');
     };
     
     if (!document.getElementById('vk-warning')) {
