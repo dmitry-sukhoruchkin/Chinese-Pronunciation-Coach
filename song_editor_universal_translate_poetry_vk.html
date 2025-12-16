@@ -7,6 +7,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Universal Music Editor (Large Fonts)</title>
     <style>
+    @media screen and (max-width: 800px) {
+        .lyric-edit { font-size: 21px !important; }
+        .beats-row { height: 95px !important; }
+        .measure { width: 11.2% !important; }
+    }
+    </style>
+    <style>
         :root {
             --bg: #1e1e1e;
             --panel-bg: #252525;
@@ -173,7 +180,7 @@
             border: var(--measure-border);
             border-radius: 2px;
             /* ВОЗВРАЩАЕМ 8 В РЯД */
-            width: 12%; 
+            width: 11.5; 
             margin-bottom: 4px;
             position: relative;
             box-sizing: border-box;
@@ -194,7 +201,7 @@
         /* --- ИЗМЕНЕНИЕ 1: Увеличена высота строки --- */
         .beats-row { 
             display: flex; 
-            height: 110px; /* Было 85px. Увеличили для крупных шрифтов */
+            height: 100px; /* Было 85px. Увеличили для крупных шрифтов */
         }
 
         /* Поле поэзии (внизу такта) */
@@ -266,7 +273,7 @@
             width: 100%; text-align: center;
             background: transparent; border: none;
             color: inherit; font-family: "KaiTi", "SimKai", serif;
-            font-size: 24px; /* Было 18px */
+            font-size: 22px; /* Было 18px */
             line-height: 1;
             overflow: visible; white-space: nowrap;
             cursor: pointer;
