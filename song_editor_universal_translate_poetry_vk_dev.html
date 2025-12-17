@@ -743,6 +743,137 @@ AudioContext: ${results.audioContextAvailable ? '✅ Доступен' : '❌ Н
 
 <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 <script>
+// Инициализация VK Bridge
+vkBridge.send('VKWebAppInit', {})
+  .then(() => console.log('VK Bridge инициализирован'))
+  .catch(console.error);
+  
+vkBridge.send('VKWebAppGetSupportedMethods')
+  .then(data => {
+    if (data.methods && data.methods.includes('VKWebAppTtsPlay')) {
+      console.log('TTS через Bridge поддерживается');
+    }
+  });
+
+// ВАЖНО: Удалите дублирующиеся объявления!
+// Инициализация VK Bridge - ОДИН РАЗ в начале
+// ОПРЕДЕЛЯЕМ СРЕДУ БОЛЕЕ ТОЧНО
+let isVKWebView = false;
+let isMobileVK = false;
+let isVKApp = false;
+let isVKMobileWeb = false;
+
+const urlParams = new URLSearchParams(window.location.search);
+const vkPlatform = urlParams.get('vk_platform');
+const vkIsApp = urlParams.get('vk_is_app');
+const userAgent = navigator.userAgent.toLowerCase();
+
+// Точная детекция среды
+if (vkPlatform) {
+    isVKWebView = true;
+    
+    if (vkPlatform.includes('mobile')) {
+        isMobileVK = true;
+        
+        // Различаем приложение и мобильный веб
+        if (vkPlatform.includes('mobile_web')) {
+            isVKMobileWeb = true;
+            console.log('Detected: VK Mobile Web Browser');
+        } else if (vkPlatform.includes('mobile_android') || vkPlatform.includes('mobile_ios')) {
+            isVKApp = true;
+            console.log('Detected: VK Mobile App (WebView)');
+        }
+    }
+}
+
+// Также проверяем по userAgent на всякий случай
+if (userAgent.includes('vk') && userAgent.includes('mobile')) {
+    isVKWebView = true;
+    isMobileVK = true;
+    isVKApp = true;
+}
+
+console.log('Environment:', {
+    vkPlatform,
+    isVKWebView,
+    isMobileVK,
+    isVKApp,
+    isVKMobileWeb
+});
+
+// Инициализируем VK Bridge только если мы в VK
+if (isVKWebView && typeof vkBridge !== 'undefined') {
+    vkBridge.send('VKWebAppInit', {})
+        .then(() => {
+            console.log('VK Bridge инициализирован');
+            logDebug('success', 'VK Bridge инициализирован');
+            
+            // Проверяем поддержку TTS
+            vkBridge.send('VKWebAppGetSupportedMethods')
+                .then(data => {
+                    const hasTTS = data.methods && data.methods.includes('VKWebAppTtsPlay');
+                    logDebug('info', 'Поддержка VK TTS', { hasTTS });
+                })
+                .catch(err => {
+                    logDebug('warning', 'Не удалось проверить методы VK', { error: err.message });
+                });
+        })
+        .catch(err => {
+            console.error('Ошибка инициализации VK Bridge:', err);
+            logDebug('error', 'Ошибка инициализации VK Bridge', { error: err.message });
+            isVKWebView = false; // Если не удалось, считаем что не в VK
+        });
+}
+
+// Модифицированная функция speakViaVKBridge
+async function speakViaVKBridge(text, rate = 1.0) {
+    logDebug('info', 'speakViaVKBridge вызвана', { 
+        text, 
+        rate,
+        isVKWebView,
+        isMobileVK,
+        vkPlatform 
+    });
+
+    // 1. Если не в VK WebView, сразу используем fallback
+    if (!isVKWebView) {
+        logDebug('info', 'Не в VK WebView, переход на fallback');
+        fallbackTTS(text);
+        return;
+    }
+
+    // 2. Проверяем доступность vkBridge
+    if (typeof vkBridge === 'undefined') {
+        logDebug('warning', 'vkBridge не определен, fallback');
+        fallbackTTS(text);
+        return;
+    }
+
+    try {
+        logDebug('info', 'Пробуем VKWebAppTtsPlay...');
+        
+        await vkBridge.send('VKWebAppTtsPlay', {
+            text: text,
+            pitch: 1.0,
+            rate: rate,
+            volume: 1.0
+        });
+        
+        logDebug('success', 'VK Bridge TTS успешно запущен');
+        
+    } catch (error) {
+        logDebug('error', 'Ошибка VK Bridge TTS', { 
+            error: error.message,
+            errorName: error.name 
+        });
+        
+        // Fallback на Web Speech API
+        fallbackTTS(text);
+    }
+}
+
+console.log('VK Platform detected:', vkPlatform, 'isVKWebView:', isVKWebView);
+
 function ensureVoiceLoading() {
     // Проблема: в мобильной эмуляции голоса иногда не загружаются вовремя
     if (!window.speechSynthesis) {
