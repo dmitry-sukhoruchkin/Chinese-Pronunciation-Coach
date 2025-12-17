@@ -668,36 +668,41 @@ if (vkPlatform && (vkPlatform.includes('mobile') || vkIsApp)) {
 
 // Функция для запуска TTS через VK Bridge
 async function speakViaVKBridge(text, rate = 1.0) {
-    if (!isVKWebView || !text) {
-        // Fallback на стандартный Web Speech API, если не в VK
+    logDebug('info', 'START speakViaVKBridge', { isVKWebView, text });
+    // 1. Главное условие: если не в VK, сразу используем запасной вариант
+    if (!isVKWebView) {
+        logDebug('info', 'FALLBACK: Не в VK WebView, переход на Web Speech API');
         fallbackTTS(text);
-        return;
+        return; // Выходим из функции
     }
 
-    // 1. Проверяем поддержку метода VKWebAppTtsPlay
+    logDebug('info', 'Внутри VK WebView, пробуем Bridge...');
+
     try {
+        // 2. Обязательная проверка: поддерживается ли метод TTS?
         const supported = await vkBridge.send('VKWebAppGetSupportedMethods');
-        if (!supported.methods || !supported.methods.includes('VKWebAppTtsPlay')) {
-            console.warn('VKWebAppTtsPlay не поддерживается в этом клиенте VK.');
-            fallbackTTS(text); // Переход на запасной вариант
-            return;
-        }
-    } catch (e) {
-        console.error('Ошибка проверки поддерживаемых методов:', e);
-    }
+        const canUseTTS = supported.methods && supported.methods.includes('VKWebAppTtsPlay');
+        logDebug('info', 'Поддержка VK TTS', { canUseTTS });
 
-    // 2. Пробуем вызвать TTS через VK Bridge
-    try {
+        if (!canUseTTS) {
+            logDebug('warning', 'FALLBACK: VKWebAppTtsPlay не поддерживается!');
+            fallbackTTS(text);
+            return; // Выходим из функции
+        }
+
+        // 3. Только если метод поддерживается, пытаемся его вызвать
+        logDebug('info', 'Вызываем VKWebAppTtsPlay...');
         await vkBridge.send('VKWebAppTtsPlay', {
             text: text,
             pitch: 1.0,
             rate: rate,
             volume: 1.0
         });
-        console.log('VK Bridge TTS запущен');
+        logDebug('success', 'VK Bridge TTS запущен!');
+
     } catch (error) {
-        console.error('Ошибка VK Bridge TTS:', error);
-        // 3. Fallback на стандартный TTS при любой ошибке
+        // 4. Любая ошибка на предыдущих шагах ведет к fallback
+        logDebug('error', 'FALLBACK: Исключение в VK Bridge', { error: error.message });
         fallbackTTS(text);
     }
 }
