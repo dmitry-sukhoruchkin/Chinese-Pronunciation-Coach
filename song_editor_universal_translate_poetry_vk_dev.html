@@ -747,19 +747,11 @@ async function generateTTSAudio(text) {
 async function pregenerateAllAudio() {
     // Если уже генерируем - тихо выходим
     if (isGeneratingAudio) {
-        console.log('Генерация уже выполняется');
         return;
     }
     
-    // Проверка Web Speech API без попапов
-    if (!window.speechSynthesis) {
-        console.error('Web Speech API недоступен');
-        // Просто меняем кнопку на "недоступно"
-        const btn = document.getElementById('pregenBtn');
-        btn.innerHTML = '❌ TTS недоступен';
-        btn.style.background = '#757575';
-        return;
-    }
+    // УБИРАЕМ ПРОВЕРКУ НА window.speechSynthesis!
+    // В VK/Telegram нет Web Speech API, но мы используем Google TTS
     
     // Собираем уникальные фразы
     const uniquePhrases = new Set();
@@ -776,66 +768,60 @@ async function pregenerateAllAudio() {
     
     // Фильтруем уже сгенерированные
     const phrasesToGenerate = Array.from(uniquePhrases).filter(phrase => 
-        !ttsConfig.audioCache[phrase]
+        !ttsConfig.audioCache[phrase] || ttsConfig.audioCache[phrase] === 'cached'
     );
     
     if (phrasesToGenerate.length === 0) {
-        // Ничего не делаем, просто выходим
         console.log('Все аудио уже сгенерированы');
         return;
     }
     
-    // НАЧИНАЕМ ГЕНЕРАЦИЮ - БЕЗ ВСПЛЫВАЮЩИХ ОКОН
-    
-    // 1. Устанавливаем флаги
+    // НАЧИНАЕМ ГЕНЕРАЦИЮ
     isGeneratingAudio = true;
     totalPhrasesToGenerate = phrasesToGenerate.length;
     generatedAudioCount = 0;
     
-    // 2. Меняем кнопку
     const btn = document.getElementById('pregenBtn');
     btn.innerHTML = `⏳ 0/${totalPhrasesToGenerate}`;
     btn.style.background = '#FF9800';
     btn.disabled = true;
     
-    console.log(`Начата фоновая генерация ${totalPhrasesToGenerate} аудиофайлов`);
+    console.log(`Начата генерация ${totalPhrasesToGenerate} аудиофайлов через Google TTS`);
     
-    // 3. Фоновая генерация по одной фразе
+    // Генерация ВСЕХ фраз через Google TTS
     for (let i = 0; i < phrasesToGenerate.length; i++) {
-        if (!isGeneratingAudio) break; // Проверяем, не отменили ли
+        if (!isGeneratingAudio) break;
         
         const phrase = phrasesToGenerate[i];
+        console.log(`(${i+1}/${totalPhrasesToGenerate}) Генерация: "${phrase}"`);
+        
         try {
-            // Логируем в консоль, но не показываем пользователю
-            console.log(`Генерация ${i+1}/${totalPhrasesToGenerate}: ${phrase}`);
+            // Генерируем через Google TTS
+            const audioUrl = await generateAudioForPhrase(phrase);
             
-            // Используем ШТАТНЫЙ браузерный TTS для создания аудио
-            // (вам нужно будет реализовать createAudioWithWebSpeech)
-            const audioUrl = await createAudioWithWebSpeech(phrase);
+            // Сохраняем реальный URL аудио (не маркер 'cached')
+            ttsConfig.audioCache[phrase] = audioUrl;
+            generatedAudioCount++;
             
-            if (audioUrl) {
-                ttsConfig.audioCache[phrase] = audioUrl;
-                generatedAudioCount++;
-                
-                // Обновляем только текст кнопки
-                btn.innerHTML = `⏳ ${generatedAudioCount}/${totalPhrasesToGenerate}`;
-                
-                // Сохраняем прогресс
-                saveAudioCacheToStorage();
-            }
+            // Обновляем UI
+            btn.innerHTML = `⏳ ${generatedAudioCount}/${totalPhrasesToGenerate}`;
             
-            // Пауза между фразами (чтобы не грузить систему)
+            // Сохраняем прогресс
+            saveAudioCacheToStorage();
+            
+            // Пауза между запросами
             if (i < phrasesToGenerate.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 300));
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
             
         } catch (error) {
-            // Тихо логируем ошибки, не прерывая процесс
-            console.warn(`Не удалось сгенерировать "${phrase}":`, error);
+            console.error(`Не удалось сгенерировать "${phrase}":`, error);
+            // Помечаем как 'cached', чтобы больше не пытаться
+            ttsConfig.audioCache[phrase] = 'cached';
         }
     }
     
-    // 4. ЗАВЕРШЕНИЕ - возвращаем кнопку в исходное состояние
+    // Завершение
     isGeneratingAudio = false;
     btn.disabled = false;
     
@@ -848,6 +834,34 @@ async function pregenerateAllAudio() {
         btn.style.background = '#8BC34A';
         console.log('Генерация не удалась');
     }
+}
+
+async function generateAudioForPhrase(text) {
+    // Всегда используем Google TTS для предгенерации
+    const encodedText = encodeURIComponent(text);
+    
+    // Пробуем несколько эндпоинтов Google TTS
+    const endpoints = [
+        `https://translate.google.com.vn/translate_tts?ie=UTF-8&tl=zh-CN&client=gtx&q=${encodedText}`,
+        `https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-CN&client=tw-ob&q=${encodedText}`
+    ];
+    
+    for (const url of endpoints) {
+        try {
+            const response = await fetch(url);
+            if (response.ok) {
+                const blob = await response.blob();
+                const audioUrl = URL.createObjectURL(blob);
+                console.log(`Аудио сгенерировано через Google TTS: "${text}"`);
+                return audioUrl;
+            }
+        } catch (error) {
+            console.warn(`Эндпоинт ${url} не сработал, пробуем следующий`);
+            continue;
+        }
+    }
+    
+    throw new Error('Все эндпоинты Google TTS не сработали');
 }
 
 async function createAudioWithWebSpeech(text) {
@@ -1022,6 +1036,8 @@ function sendDataToBot(dataString) {
     // После отправки окно можно закрыть
     // tg.close();
 }
+let isTelegramWebApp = !!window.Telegram?.WebApp;
+
 </script>
 
 <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
@@ -2033,37 +2049,18 @@ async function speakPhrase(text) {
     const cleanText = text.trim();
     if (!cleanText) return;
     
-    // 1. Если фраза "предгенерирована" - используем обычный TTS
-    if (ttsConfig.audioCache[cleanText] === 'cached') {
-        // Используем штатный браузерный TTS
-        if (window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-            
-            const utterance = new SpeechSynthesisUtterance(cleanText);
-            utterance.lang = 'zh-CN';
-            utterance.rate = ttsRate;
-            
-            if (availableVoices && availableVoices.length > 0) {
-                const chineseVoice = availableVoices.find(v => 
-                    v.lang.includes('zh') || v.lang.includes('CN') || v.lang.includes('TW')
-                );
-                if (chineseVoice) utterance.voice = chineseVoice;
-            }
-            
-            window.speechSynthesis.speak(utterance);
-        }
-        return;
-    }
+    // Определяем, где мы находимся
+    const isMobileWebView = window.Telegram?.WebApp || isVKWebView;
     
-    // 2. Обычная логика (если есть реальный аудиофайл в кэше)
+    // 1. Если есть реальный аудиофайл в кэше - используем его (для VK/Telegram)
     if (ttsConfig.audioCache[cleanText] && ttsConfig.audioCache[cleanText] !== 'cached') {
         const audio = new Audio(ttsConfig.audioCache[cleanText]);
         audio.play().catch(e => console.warn('Ошибка воспроизведения:', e));
         return;
     }
     
-    // 3. Штатный TTS (если не предгенерировано)
-    if (window.speechSynthesis) {
+    // 2. Если мы в обычном браузере с Web Speech API - используем штатный TTS
+    if (window.speechSynthesis && !isMobileWebView) {
         window.speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(cleanText);
@@ -2078,7 +2075,39 @@ async function speakPhrase(text) {
         }
         
         window.speechSynthesis.speak(utterance);
+        return;
     }
+    
+    // 3. Для VK/Telegram без предгенерированного аудио - пробуем сгенерировать на лету
+    if (isMobileWebView) {
+        try {
+            console.log(`Генерация аудио на лету для: "${cleanText}"`);
+            const audioUrl = await generateAudioForPhrase(cleanText);
+            ttsConfig.audioCache[cleanText] = audioUrl;
+            
+            const audio = new Audio(audioUrl);
+            audio.play().catch(e => console.warn('Ошибка воспроизведения:', e));
+        } catch (error) {
+            console.error('Не удалось сгенерировать аудио:', error);
+            // В VK/Telegram показываем пиньинь как fallback
+            showPinyinFallback(cleanText);
+        }
+    }
+}
+
+// Вспомогательная функция для показа пиньиня
+function showPinyinFallback(text) {
+    // Находим пиньинь для текста в текущей песне
+    currentSong.timeline.forEach(measure => {
+        measure.txt.forEach(txtEntry => {
+            if (!txtEntry) return;
+            const parts = txtEntry.split('/');
+            if (parts.length > 1 && parts[1] === text) {
+                console.log(`Пиньинь для "${text}": ${parts[0]}`);
+                // Можно добавить отображение где-то на экране
+            }
+        });
+    });
 }
 
 function saveAudioCacheToStorage() {
