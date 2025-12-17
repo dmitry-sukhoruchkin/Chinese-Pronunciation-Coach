@@ -554,12 +554,9 @@
 
 <script>
 function testTTS(text) {
-    logDebug('info', 'Ручной тест TTS', { text });
-    if (isVKWebView) {
-        speakViaVKBridge(text);
-    } else {
-        speakPhrase(text);
-    }
+    logDebug('info', 'Ручной тест TTS', { text, isVKWebView });
+    // Всегда вызываем speakPhrase, которая сама решит, какой метод использовать
+    speakPhrase(text);
 }
 
 async function testAllTTSMethods() {
@@ -705,6 +702,33 @@ async function speakViaVKBridge(text, rate = 1.0) {
         logDebug('error', 'FALLBACK: Исключение в VK Bridge', { error: error.message });
         fallbackTTS(text);
     }
+}
+
+// Инициализация VK Bridge
+let isVKWebView = false;
+let isMobileVK = false;
+let vkPlatform = null;
+
+// Проверяем наличие объекта vkBridge
+if (typeof vkBridge !== 'undefined') {
+    isVKWebView = true;
+    // Пытаемся получить параметры платформы из URL
+    const urlParams = new URLSearchParams(window.location.search);
+    vkPlatform = urlParams.get('vk_platform');
+    if (vkPlatform && (vkPlatform.includes('mobile') || vkPlatform.includes('android') || vkPlatform.includes('ios'))) {
+        isMobileVK = true;
+    }
+    
+    // Инициализируем мост
+    vkBridge.send('VKWebAppInit', {})
+      .then(() => {
+          console.log('VK Bridge инициализирован');
+          logDebug('success', 'VK Bridge инициализирован');
+      })
+      .catch(err => {
+          console.error('Ошибка инициализации VK Bridge:', err);
+          logDebug('error', 'Ошибка инициализации VK Bridge', { error: err.message });
+      });
 }
 
 console.log('VK Platform detected:', vkPlatform, 'isVKWebView:', isVKWebView);
@@ -1510,61 +1534,57 @@ function scheduleNote(bar, beat, time) {
         }
     }
 
-// Модифицированная функция speakPhrase
 function speakPhrase(text) {
-  console.log('TTS вызов:', text);
-  
-  if (!text) return;
-
-    if (isVKWebView) {
-        vkBridge.send('VKWebAppTtsPlay', {
-            text: text,
-            pitch: 1.0,
-            rate: ttsRate,
-            volume: 1.0
-        }).catch(error => {
-            console.error('Ошибка VK TTS:', error);
-            // Можно вызвать fallback, если есть
-        });
+    // Сразу логируем начало вызова
+    logDebug('info', 'START speakPhrase', { text, isVKWebView, isMobileVK, ttsRate });
+    
+    if (!text) {
+        logDebug('warning', 'Пустой текст, выход');
         return;
     }
 
-  // Для мобильного VK используем VK Bridge
-  if (isMobileVK) {
-    speakViaVKBridge(text, ttsRate);
-    return;
-  }
-  
-  // Для десктопа и браузера используем стандартный API
-  if (window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-    let u = new SpeechSynthesisUtterance(text);
-    u.lang = 'zh-CN';
-    u.rate = ttsRate;
-    if(selectedVoice) u.voice = selectedVoice;
-    
-    u.onerror = function(event) {
-      console.error('TTS Error:', event);
-    };
-    
-    window.speechSynthesis.speak(u);
-  } else {
-    console.log('TTS недоступен');
-  }
-}
+    // 1. Всегда сначала пробуем безопасный вызов через speakViaVKBridge внутри VK
+    if (isVKWebView || isMobileVK) {
+        logDebug('info', 'Определена среда VK, вызов speakViaVKBridge');
+        speakViaVKBridge(text, ttsRate);
+        return; // speakViaVKBridge сама решит, использовать VK Bridge или fallback
+    }
 
+    // 2. Только если мы НЕ в VK, используем прямой Web Speech API
+    logDebug('info', 'Вне среды VK, прямой вызов Web Speech API');
+    
+    if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        let utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = ttsRate;
+        if (selectedVoice) utterance.voice = selectedVoice;
+        
+        utterance.onstart = () => logDebug('success', 'Web Speech API: воспроизведение началось');
+        utterance.onerror = (event) => logDebug('error', 'Web Speech API: ошибка', { error: event.error, message: event.message });
+        utterance.onend = () => logDebug('info', 'Web Speech API: воспроизведение завершено');
+        
+        window.speechSynthesis.speak(utterance);
+    } else {
+        logDebug('error', 'Web Speech API недоступен в этом браузере');
+    }
+}
 function fallbackTTS(text) {
-  if (window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-    let u = new SpeechSynthesisUtterance(text);
-    u.lang = 'zh-CN';
-    u.rate = ttsRate;
-    if(selectedVoice) u.voice = selectedVoice;
-    u.onerror = function(event) {
-      console.error('TTS Error:', event);
-    };
-    window.speechSynthesis.speak(u);
-  }
+    logDebug('info', 'Запуск fallbackTTS', { text });
+    if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        let u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-CN';
+        u.rate = ttsRate;
+        if(selectedVoice) u.voice = selectedVoice;
+        u.onerror = function(event) {
+            console.error('TTS Error:', event);
+            logDebug('error', 'Ошибка в fallbackTTS', { error: event });
+        };
+        window.speechSynthesis.speak(u);
+    } else {
+        logDebug('error', 'Web Speech API недоступен в fallbackTTS');
+    }
 }
 
 
