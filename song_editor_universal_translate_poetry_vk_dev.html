@@ -1943,7 +1943,7 @@ async function speakViaAudioFallback(text) {
         await useExternalTTSAPI(text);
         
         // Вариант 3: Воспроизвести через системный звук
-        playSystemBeep();
+//        playSystemBeep();
         
     } catch (error) {
         logDebug('error', 'Аудио-метод не сработал', { error: error.message });
