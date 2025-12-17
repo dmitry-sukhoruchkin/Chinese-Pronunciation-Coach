@@ -452,6 +452,22 @@
     display: none;
   }
 }
+
+/* Дебаг-панель */
+.debug-log-entry { 
+    margin-bottom: 6px; 
+    padding: 4px; 
+    border-left: 3px solid #444; 
+}
+.debug-log-entry.success { border-left-color: #4CAF50; }
+.debug-log-entry.error { border-left-color: #f44336; }
+.debug-log-entry.info { border-left-color: #2196F3; }
+.debug-log-time { 
+    color: #FF9800; 
+    font-size: 9px; 
+    margin-right: 5px; 
+}
+
 </style>
     
 </head>
@@ -511,12 +527,64 @@
         <button class="ctrl-btn stop-btn" id="ttsBtn" onclick="toggleTTS()">🗣️ Слова</button>
         <button class="ctrl-btn stop-btn active" id="capoBtn" onclick="toggleCapo()">🎸 Capo: 3</button>
         
+        <button class="ctrl-btn" onclick="testTTS('тестовый китайский текст 中文测试')" style="background: #9C27B0; color: white;">🎤 Тест TTS</button>
+<button class="ctrl-btn" onclick="testAllTTSMethods()" style="background: #3F51B5; color: white;">🧪 Тест всех методов</button>
+
         <button class="ctrl-btn save-btn" onclick="saveToJSON()" title="Save changes to JSON box">💾 SAVE</button>
     </div>
 
     <div id="score-container">
         <div id="zoom-wrapper"></div>
     </div>
+    
+    <div id="tts-debug-panel" style="display: none; position: fixed; bottom: 10px; right: 10px; width: 320px; max-height: 300px; background: rgba(0,0,0,0.9); color: #0f0; border: 2px solid #444; border-radius: 5px; z-index: 10000; font-family: monospace; font-size: 11px; overflow-y: auto;">
+    <div style="display: flex; justify-content: space-between; background: #222; padding: 5px; border-bottom: 1px solid #444;">
+        <strong>🔊 TTS Debug Console</strong>
+        <button onclick="clearDebugLog()" style="background: #555; color: white; border: none; padding: 2px 8px; border-radius: 3px; font-size: 10px; cursor: pointer;">Clear</button>
+        <button onclick="toggleDebugPanel()" style="background: #777; color: white; border: none; padding: 2px 8px; border-radius: 3px; font-size: 10px; cursor: pointer;">×</button>
+    </div>
+    <div id="tts-debug-logs" style="padding: 8px; line-height: 1.4; max-height: 250px; overflow-y: auto;"></div>
+</div>
+
+<button id="tts-debug-toggle" style="position: fixed; bottom: 10px; left: 10px; z-index: 9999; background: #ff9800; color: black; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 18px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">🐞</button>
+
+<script>
+function testTTS(text) {
+    logDebug('info', 'Ручной тест TTS', { text });
+    if (isVKWebView) {
+        speakViaVKBridge(text);
+    } else {
+        speakPhrase(text);
+    }
+}
+
+async function testAllTTSMethods() {
+    const testText = "测试中文语音";
+    logDebug('info', 'Запуск полного теста TTS методов');
+    
+    // Тест 1: VK Bridge
+    if (isVKWebView) {
+        logDebug('info', 'Тест 1: VK Bridge TTS...');
+        await speakViaVKBridge(testText);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    // Тест 2: Web Speech API
+    logDebug('info', 'Тест 2: Web Speech API...');
+    fallbackTTS(testText);
+    
+    // Тест 3: Проверка доступности голосов
+    if (window.speechSynthesis) {
+        const voices = window.speechSynthesis.getVoices();
+        const chineseVoices = voices.filter(v => v.lang.includes('zh') || v.lang.includes('CN'));
+        logDebug('info', 'Доступные голоса', { 
+            totalVoices: voices.length,
+            chineseVoices: chineseVoices.length,
+            voiceNames: chineseVoices.map(v => v.name)
+        });
+    }
+}
+</script>
 
 <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 <script>
@@ -549,22 +617,33 @@ if (vkPlatform && (vkPlatform.includes('mobile') || vkIsApp)) {
 
 // Функция для запуска TTS через VK Bridge
 async function speakViaVKBridge(text, rate = 1.0) {
-  if (!isVKWebView) {
-    speakPhrase(text);
-    return;
-  }
-  
-  try {
-    await vkBridge.send('VKWebAppTtsPlay', {
-      text: text,
-      pitch: 1.0,
-      rate: rate,
-      volume: 1.0
-    });
-  } catch (error) {
-    console.warn('VK TTS failed, falling back to Web Speech API:', error);
-    speakPhrase(text);
-  }
+    if (!isVKWebView || !text) {
+        logDebug('info', 'WebView не обнаружен, fallback на стандартный TTS', { text });
+        fallbackTTS(text);
+        return;
+    }
+    
+    logDebug('info', 'Попытка VK Bridge TTS', { text, rate, platform: vkPlatform });
+    
+    try {
+        await vkBridge.send('VKWebAppTtsPlay', {
+            text: text,
+            pitch: 1.0,
+            rate: rate,
+            volume: 1.0
+        });
+        logDebug('success', 'VK Bridge TTS запущен успешно', { text });
+    } catch (error) {
+        logDebug('error', 'VK Bridge TTS ошибка', { 
+            error: error.message, 
+            errorCode: error.code,
+            text: text.substring(0, 20) + '...' 
+        });
+        
+        // Попробуем fallback через создание аудио элемента (альтернативный метод)
+        logDebug('info', 'Попытка fallback через Audio API');
+        fallbackTTS(text);
+    }
 }
 
 console.log('VK Platform detected:', vkPlatform, 'isVKWebView:', isVKWebView);
@@ -749,6 +828,72 @@ console.log('VK Platform detected:', vkPlatform, 'isVKWebView:', isVKWebView);
     const noteMap = {'C':261.63,'C#':277.18,'Db':277.18,'D':293.66,'D#':311.13,'Eb':311.13,'E':329.63,'F':349.23,'F#':369.99,'Gb':369.99,'G':392.00,'G#':415.30,'Ab':415.30,'A':440.00,'A#':466.16,'Bb':466.16,'B':493.88};
     const semitones = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
+// ================== TTS DEBUGGER ==================
+let ttsDebugEnabled = true;
+let debugLogs = [];
+
+function logDebug(type, message, details = null) {
+    if (!ttsDebugEnabled) return;
+    
+    const time = new Date().toLocaleTimeString();
+    const logEntry = { time, type, message, details };
+    debugLogs.push(logEntry);
+    
+    // Обновляем UI
+    const logElement = document.createElement('div');
+    logElement.className = `debug-log-entry ${type}`;
+    logElement.innerHTML = `
+        <span class="debug-log-time">[${time}]</span>
+        <strong>${message}</strong>
+        ${details ? `<div style="color: #aaa; font-size: 10px; margin-top: 2px;">${JSON.stringify(details)}</div>` : ''}
+    `;
+    
+    const logsContainer = document.getElementById('tts-debug-logs');
+    if (logsContainer) {
+        logsContainer.appendChild(logElement);
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+    }
+    
+    // Сохраняем в localStorage для сохранения логов между перезагрузками
+    try {
+        const savedLogs = JSON.parse(localStorage.getItem('ttsDebugLogs') || '[]');
+        savedLogs.push(logEntry);
+        if (savedLogs.length > 50) savedLogs.shift();
+        localStorage.setItem('ttsDebugLogs', JSON.stringify(savedLogs));
+    } catch(e) {}
+}
+
+function toggleDebugPanel() {
+    const panel = document.getElementById('tts-debug-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function clearDebugLog() {
+    debugLogs = [];
+    const logsContainer = document.getElementById('tts-debug-logs');
+    if (logsContainer) logsContainer.innerHTML = '';
+    localStorage.removeItem('ttsDebugLogs');
+}
+
+// Инициализация кнопки дебага
+document.getElementById('tts-debug-toggle')?.addEventListener('click', toggleDebugPanel);
+
+// Загрузка сохраненных логов
+window.addEventListener('load', function() {
+    try {
+        const savedLogs = JSON.parse(localStorage.getItem('ttsDebugLogs') || '[]');
+        savedLogs.forEach(log => {
+            const logElement = document.createElement('div');
+            logElement.className = `debug-log-entry ${log.type}`;
+            logElement.innerHTML = `
+                <span class="debug-log-time">[${log.time}]</span>
+                <strong>${log.message}</strong>
+                ${log.details ? `<div style="color: #aaa; font-size: 10px;">${JSON.stringify(log.details)}</div>` : ''}
+            `;
+            document.getElementById('tts-debug-logs')?.appendChild(logElement);
+        });
+    } catch(e) {}
+});
     // --- INIT ---
 function init() {
   document.getElementById('json-input').value = JSON.stringify(currentSong, null, 4);
