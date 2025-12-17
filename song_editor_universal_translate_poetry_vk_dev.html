@@ -918,24 +918,120 @@ function ensureVoiceLoading() {
 }
 
 // Обновляем функцию loadVoices
-function updateVoiceSelect() {
+function updateVoiceSelect(voices, forceDefault = false) {
     const select = document.getElementById('voiceSelect');
-    select.innerHTML = '';
+    if (!select) return;
     
-    availableVoices.forEach(v => {
-        const opt = document.createElement('option');
-        opt.value = v.name;
-        opt.innerText = `${v.name.substring(0, 20)} (${v.lang})`;
-        select.appendChild(opt);
+    // Сохраняем голоса в глобальной переменной
+    availableVoices = voices;
+    
+    // Очищаем список
+    select.innerHTML = '<option value="">Загрузка голосов...</option>';
+    
+    if (voices.length === 0) {
+        select.innerHTML = '<option value="">Голоса не загружены</option>';
+        select.disabled = true;
+        return;
+    }
+    
+    // Добавляем все доступные голоса
+    voices.forEach((voice, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${voice.name} (${voice.lang})`;
+        
+        // Выделяем китайские голоса и голос по умолчанию
+        if (voice.lang.includes('zh') || voice.lang.includes('CN')) {
+            option.style.color = '#4CAF50';
+            option.style.fontWeight = 'bold';
+        }
+        
+        // Если это наш голос по умолчанию, делаем его более заметным
+        if (voice.lang === 'zh-TW' && voice.name.includes('Google 國語')) {
+            option.style.backgroundColor = '#2E7D32';
+            option.style.color = '#FFFFFF';
+            option.textContent = `★ ${voice.name} (${voice.lang}) ★`;
+        }
+        
+        select.appendChild(option);
     });
     
-    // Автовыбор китайского голоса если есть
-    const chineseVoice = availableVoices.find(v => v.lang.includes('zh') || v.lang.includes('CN'));
-    if (chineseVoice) {
-        select.value = chineseVoice.name;
-        selectedVoice = chineseVoice;
-        logDebug('success', `Автовыбран китайский голос: ${chineseVoice.name}`);
+    select.disabled = false;
+    
+    // ПОИСК И УСТАНОВКА ГОЛОСА ПО УМОЛЧАНИЮ
+    if (!defaultVoiceSet || forceDefault) {
+        const defaultVoiceName = "Google 國語（臺灣）";
+        const defaultVoiceLang = "zh-TW";
+        
+        // Ищем голос по умолчанию
+        let foundDefaultVoice = null;
+        let defaultVoiceIndex = -1;
+        
+        for (let i = 0; i < voices.length; i++) {
+            const voice = voices[i];
+            
+            // Точное совпадение
+            if (voice.name === defaultVoiceName && voice.lang === defaultVoiceLang) {
+                foundDefaultVoice = voice;
+                defaultVoiceIndex = i;
+                break;
+            }
+            
+            // Частичное совпадение (если точного нет)
+            if (!foundDefaultVoice && voice.lang === defaultVoiceLang) {
+                foundDefaultVoice = voice;
+                defaultVoiceIndex = i;
+            }
+        }
+        
+        // Если нашли голос по умолчанию, устанавливаем его
+        if (foundDefaultVoice && defaultVoiceIndex !== -1) {
+            select.value = defaultVoiceIndex;
+            selectedVoice = foundDefaultVoice;
+            defaultVoiceSet = true;
+            
+            logDebug('success', 'Установлен голос по умолчанию', {
+                name: foundDefaultVoice.name,
+                lang: foundDefaultVoice.lang,
+                index: defaultVoiceIndex
+            });
+            
+            // Сохраняем выбор в localStorage
+            localStorage.setItem('selectedVoiceIndex', defaultVoiceIndex);
+        } else {
+            // Если не нашли, используем первый доступный китайский голос
+            const chineseVoices = voices.filter(v => 
+                v.lang.includes('zh') || v.lang.includes('CN') || v.lang.includes('TW')
+            );
+            
+            if (chineseVoices.length > 0) {
+                select.value = voices.indexOf(chineseVoices[0]);
+                selectedVoice = chineseVoices[0];
+                defaultVoiceSet = true;
+                
+                logDebug('info', 'Установлен первый китайский голос', {
+                    name: chineseVoices[0].name,
+                    lang: chineseVoices[0].lang
+                });
+                
+                localStorage.setItem('selectedVoiceIndex', voices.indexOf(chineseVoices[0]));
+            }
+        }
+    } else {
+        // Восстанавливаем сохраненный выбор
+        const savedIndex = localStorage.getItem('selectedVoiceIndex');
+        if (savedIndex !== null && voices[parseInt(savedIndex)]) {
+            select.value = savedIndex;
+            selectedVoice = voices[parseInt(savedIndex)];
+            
+            logDebug('info', 'Восстановлен сохраненный голос', {
+                name: selectedVoice.name,
+                lang: selectedVoice.lang
+            });
+        }
     }
+    
+    logDebug('success', `Обновлен список голосов: ${voices.length} голосов`);
 }
 
 function testVKBridgeExplicitly() {
@@ -1170,6 +1266,9 @@ function initializeTTSWithGesture() {
 let ttsDebugEnabled = true;
 let debugLogs = [];
 
+// Флаг для отслеживания установки голоса по умолчанию
+let defaultVoiceSet = false;
+
 function logDebug(type, message, details = null) {
     if (!ttsDebugEnabled) return;
     
@@ -1330,7 +1429,7 @@ function init() {
     // Улучшенная функция инициализации голосов
 // ОБНОВЛЕННАЯ ЗАГРУЗКА ГОЛОСОВ
 function loadVoices() {
-    logDebug('info', 'Загрузка голосов');
+    logDebug('info', 'Загрузка голосов...');
     
     if (!window.speechSynthesis) {
         logDebug('error', 'SpeechSynthesis не поддерживается');
@@ -1343,41 +1442,90 @@ function loadVoices() {
         return;
     }
 
-    const voices = window.speechSynthesis.getVoices();
-    
-    if (voices.length === 0) {
-        // Ждем события voiceschanged
-        const voicesChangedHandler = () => {
-            const voicesNow = window.speechSynthesis.getVoices();
-            logDebug('info', `Голоса загружены через событие: ${voicesNow.length}`);
+    // Пытаемся получить голоса
+    const getVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        
+        if (voices.length === 0) {
+            logDebug('info', 'Голоса еще не загружены, ждем...');
             
-            if (voicesNow.length > 0) {
-                updateVoiceSelect(voicesNow);
-                window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler);
+            // Ждем события voiceschanged
+            const voicesChangedHandler = () => {
+                const voicesNow = window.speechSynthesis.getVoices();
+                logDebug('info', `Голоса загружены через событие: ${voicesNow.length}`);
+                
+                if (voicesNow.length > 0) {
+                    // ВАЖНО: forceDefault = false при событиях
+                    updateVoiceSelect(voicesNow, false);
+                    window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler);
+                }
+            };
+            
+            window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler);
+            
+            // На мобильных пробуем активировать
+            if (isMobileVK || /mobile/i.test(navigator.userAgent)) {
+                setTimeout(() => {
+                    const utterance = new SpeechSynthesisUtterance('');
+                    utterance.volume = 0;
+                    window.speechSynthesis.speak(utterance);
+                    window.speechSynthesis.cancel();
+                    logDebug('info', 'Активирован TTS API на мобильном');
+                }, 1000);
             }
-        };
-        
-        window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler);
-        
-        // На мобильных пробуем активировать
-        if (isMobileVK || /mobile/i.test(navigator.userAgent)) {
-            setTimeout(() => {
-                const utterance = new SpeechSynthesisUtterance('');
-                utterance.volume = 0;
-                window.speechSynthesis.speak(utterance);
-                window.speechSynthesis.cancel();
-                logDebug('info', 'Активирован TTS API');
-            }, 500);
+            
+            return;
         }
-    } else {
-        logDebug('success', `Голоса уже загружены: ${voices.length}`);
-        updateVoiceSelect(voices);
-    }
+        
+        logDebug('success', `Голоса загружены: ${voices.length} голосов`);
+        
+        // Первый раз устанавливаем голос по умолчанию
+        if (!defaultVoiceSet) {
+            updateVoiceSelect(voices, true); // forceDefault = true
+        } else {
+            updateVoiceSelect(voices, false);
+        }
+    };
+
+    // Пробуем сразу
+    getVoices();
+    
+    // И через небольшой таймаут на всякий случай
+    setTimeout(getVoices, 500);
+    
+    // Дополнительная проверка через 2 секунды
+    setTimeout(() => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0 && !defaultVoiceSet) {
+            updateVoiceSelect(voices, true);
+        }
+    }, 2000);
 }
     
-    function updateVoice() {
-        selectedVoice = availableVoices.find(v => v.name === document.getElementById('voiceSelect').value);
+function updateVoice() {
+    const select = document.getElementById('voiceSelect');
+    const voiceIndex = parseInt(select.value);
+    
+    if (!isNaN(voiceIndex) && availableVoices[voiceIndex]) {
+        selectedVoice = availableVoices[voiceIndex];
+        
+        // Сохраняем выбор
+        localStorage.setItem('selectedVoiceIndex', voiceIndex);
+        
+        logDebug('success', 'Голос изменен', {
+            name: selectedVoice.name,
+            lang: selectedVoice.lang,
+            index: voiceIndex
+        });
+        
+        // Произносим тестовую фразу для проверки
+        testSelectedVoice();
+    } else {
+        selectedVoice = null;
+        localStorage.removeItem('selectedVoiceIndex');
+        logDebug('info', 'Голос сброшен на значение по умолчанию');
     }
+}
 
     // --- LOGIC ---
     function generatePhrases() {
@@ -1813,33 +1961,59 @@ function speakViaWebSpeechAPI(text) {
         window.speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'zh-CN';
-        utterance.rate = ttsRate;
+        utterance.lang = 'zh-TW'; // Устанавливаем язык по умолчанию
         
-        // Выбираем китайский голос если есть
-        if (availableVoices && availableVoices.length > 0) {
-            const chineseVoice = availableVoices.find(v => 
-                v.lang.includes('zh') || v.lang.includes('CN') || v.lang.includes('TW')
+        // ПРИОРИТЕТ 1: Используем выбранный пользователем голос
+        if (selectedVoice) {
+            utterance.voice = selectedVoice;
+            utterance.lang = selectedVoice.lang || 'zh-TW';
+            logDebug('info', 'Используем выбранный голос:', {
+                name: selectedVoice.name,
+                lang: selectedVoice.lang
+            });
+        } 
+        // ПРИОРИТЕТ 2: Ищем голос по умолчанию
+        else if (availableVoices && availableVoices.length > 0) {
+            // Ищем Google 國語（臺灣） (zh-TW)
+            const defaultVoice = availableVoices.find(v => 
+                v.lang === 'zh-TW' && v.name.includes('Google 國語')
             );
-            if (chineseVoice) {
-                utterance.voice = chineseVoice;
-                logDebug('info', 'Используем китайский голос:', chineseVoice.name);
+            
+            if (defaultVoice) {
+                utterance.voice = defaultVoice;
+                utterance.lang = 'zh-TW';
+                logDebug('info', 'Используем голос по умолчанию:', {
+                    name: defaultVoice.name,
+                    lang: defaultVoice.lang
+                });
+            } 
+            // Если не нашли, ищем любой китайский голос
+            else {
+                const chineseVoices = availableVoices.filter(v => 
+                    v.lang.includes('zh') || v.lang.includes('CN') || v.lang.includes('TW')
+                );
+                
+                if (chineseVoices.length > 0) {
+                    utterance.voice = chineseVoices[0];
+                    utterance.lang = chineseVoices[0].lang || 'zh-CN';
+                    logDebug('info', 'Используем первый китайский голос:', {
+                        name: chineseVoices[0].name,
+                        lang: chineseVoices[0].lang
+                    });
+                }
             }
         }
         
-        utterance.onstart = () => logDebug('success', 'TTS начал воспроизведение');
+        utterance.rate = ttsRate;
+        utterance.volume = 1.0;
+        
+        utterance.onstart = () => logDebug('success', 'TTS начал воспроизведение', { text: text.substring(0, 30) });
         utterance.onend = () => logDebug('info', 'TTS завершил воспроизведение');
         utterance.onerror = (event) => {
             logDebug('error', 'Ошибка TTS', { 
                 error: event.error,
                 message: event.message 
             });
-            
-            // В приложении VK пробуем альтернативный метод
-            if (isVKApp) {
-                logDebug('info', 'Пробуем альтернативный метод для VK App');
-                playSystemBeep(); // Хотя бы сигнал
-            }
         };
         
         window.speechSynthesis.speak(utterance);
@@ -1848,7 +2022,6 @@ function speakViaWebSpeechAPI(text) {
         logDebug('error', 'Исключение в Web Speech API', { error: error.message });
     }
 }
-
 // ОБХОДНОЙ МЕТОД ДЛЯ VK APP
 function usePreRecordedAudio(text) {
     // Создаем карту ключевых фраз к аудио-файлам
