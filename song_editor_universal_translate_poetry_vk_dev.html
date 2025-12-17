@@ -680,6 +680,33 @@ AudioContext: ${results.audioContextAvailable ? '✅ Доступен' : '❌ Н
 }
 </script>
 
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<script>
+// 3. Инициализируйте Telegram WebApp
+const tg = window.Telegram.WebApp;
+
+// Сообщите Telegram, что приложение готово к отображению
+tg.ready();
+tg.expand(); // Рекомендуется развернуть на весь экран
+
+// 4. Получите данные пользователя (небезопасный метод, см. важное примечание ниже)
+const user = tg.initDataUnsafe?.user;
+console.log('Пользователь:', user?.first_name, 'ID:', user?.id);
+
+// 5. Используйте тему Telegram для нативного вида
+document.documentElement.style.setProperty('--bg', 'var(--tg-theme-bg-color, #1e1e1e)');
+document.documentElement.style.setProperty('--text-color', 'var(--tg-theme-text-color, #eee)');
+
+// 6. Для отправки данных обратно в чат бота (например, при сохранении JSON)
+function sendDataToBot(dataString) {
+    // Этот метод работает только если Mini App запущен через web_app-кнопку[citation:1][citation:8]
+    tg.sendData(dataString);
+    // После отправки окно можно закрыть
+    // tg.close();
+}
+</script>
+
 <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 <script>
 // Инициализация VK Bridge
@@ -1682,40 +1709,50 @@ function scheduleNote(bar, beat, time) {
         }
     }
 
-// ОБНОВЛЕННАЯ ФУНКЦИЯ TTS ДЛЯ РАЗНЫХ СРЕД
+// В начале кода добавить конфигурацию
+const ttsConfig = {
+    useAudioFiles: true, // Переключить на false для отладки через браузерный TTS
+    audioCache: {} // Простой кэш для URL аудио
+};
+
 async function speakPhrase(text) {
-    logDebug('info', 'START speakPhrase', { 
-        text: text.substring(0, 50),
-        isVKApp,
-        isVKMobileWeb 
-    });
-
-    if (!text) {
-        logDebug('warning', 'Пустой текст, выход');
+    // 1. Если мы в обычном браузере И включен нативный TTS - используем его (для отладки)
+    if (!isTelegramWebApp && !ttsConfig.useAudioFiles && window.speechSynthesis) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        window.speechSynthesis.speak(utterance);
         return;
     }
-
-    // 1. В ПРИЛОЖЕНИИ VK: Используем ОБХОДНОЙ ПУТЬ через аудио
-    if (isVKApp) {
-        logDebug('info', 'В приложении VK, используем аудио-метод');
-        await speakViaAudioFallback(text);
-        return;
+    
+    // 2. Основной путь: использование аудиофайлов
+    try {
+        // Проверяем кэш
+        if (ttsConfig.audioCache[text]) {
+            // Воспроизводим из кэша
+            const audio = new Audio(ttsConfig.audioCache[text]);
+            audio.play();
+        } else {
+            // Генерируем аудио через внешний сервис (первый вызов будет медленным)
+            const audioUrl = await generateTTSAudio(text);
+            ttsConfig.audioCache[text] = audioUrl;
+            const audio = new Audio(audioUrl);
+            audio.play();
+        }
+    } catch (error) {
+        console.error('TTS Error:', error);
+        // Fallback: хотя бы показываем пиньинь
+        alert(`Произношение: ${getPinyinForText(text)}`);
     }
+}
 
-    // 2. В МОБИЛЬНОЙ ВЕБ-ВЕРСИИ VK: Пробуем Web Speech API
-    if (isVKMobileWeb) {
-        logDebug('info', 'В мобильной веб-версии VK, используем Web Speech API');
-        speakViaWebSpeechAPI(text);
-        return;
-    }
-
-    // 3. В ОБЫЧНОМ БРАУЗЕРЕ: Стандартный путь
-    if (window.speechSynthesis) {
-        logDebug('info', 'В обычном браузере, используем стандартный TTS');
-        speakViaWebSpeechAPI(text);
-    } else {
-        logDebug('error', 'TTS не доступен в этой среде');
-    }
+// Функция для генерации аудио (требует настройки)
+async function generateTTSAudio(text) {
+    // Здесь можно интегрироваться с разными TTS API
+    // Пример с использованием Google TTS (бесплатный, но требует интернета)
+    const encodedText = encodeURIComponent(text);
+    return `https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-CN&client=tw-ob&q=${encodedText}`;
+    
+    // Или использовать другой сервис из поиска, например, Silero[citation:1]
 }
 
 // НОВЫЙ МЕТОД: АУДИО-ЗАПИСИ ДЛЯ ПРИЛОЖЕНИЯ VK
