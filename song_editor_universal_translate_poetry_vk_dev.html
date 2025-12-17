@@ -175,7 +175,7 @@
             border: var(--measure-border);
             border-radius: 2px;
             /* ВОЗВРАЩАЕМ 8 В РЯД */
-            width: 24%; 
+            width: 12%; 
             margin-bottom: 4px;
             position: relative;
             box-sizing: border-box;
@@ -296,6 +296,12 @@
         }
 
         input:focus { outline: none; }
+
+@media (max-width: 1440px) {
+  .measure {
+    width: 24%;
+  }
+}
 
 /* В секцию стилей добавьте */
 @media (max-width: 768px) {
@@ -484,6 +490,30 @@
     }
 }
 
+/* Специальные стили для VK App */
+.vk-app-mode .voiceSelect {
+    display: none !important;
+}
+
+.vk-app-mode .measure-trans {
+    background: #333 !important;
+    color: #ff9800 !important;
+    border: 1px solid #555 !important;
+}
+
+/* Индикатор среды */
+#environment-indicator {
+    position: fixed;
+    top: 5px;
+    left: 5px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    z-index: 10000;
+}
+
 </style>
     
 </head>
@@ -666,19 +696,49 @@ vkBridge.send('VKWebAppGetSupportedMethods')
 
 // ВАЖНО: Удалите дублирующиеся объявления!
 // Инициализация VK Bridge - ОДИН РАЗ в начале
+// ОПРЕДЕЛЯЕМ СРЕДУ БОЛЕЕ ТОЧНО
 let isVKWebView = false;
 let isMobileVK = false;
-let vkPlatform = null;
+let isVKApp = false;
+let isVKMobileWeb = false;
 
-// Определяем тип платформы ОДИН РАЗ
 const urlParams = new URLSearchParams(window.location.search);
-vkPlatform = urlParams.get('vk_platform') || '';
+const vkPlatform = urlParams.get('vk_platform');
 const vkIsApp = urlParams.get('vk_is_app');
+const userAgent = navigator.userAgent.toLowerCase();
 
-isVKWebView = !!(vkPlatform || vkIsApp);
-isMobileVK = isVKWebView && (vkPlatform.includes('mobile') || vkPlatform.includes('android') || vkPlatform.includes('ios'));
+// Точная детекция среды
+if (vkPlatform) {
+    isVKWebView = true;
+    
+    if (vkPlatform.includes('mobile')) {
+        isMobileVK = true;
+        
+        // Различаем приложение и мобильный веб
+        if (vkPlatform.includes('mobile_web')) {
+            isVKMobileWeb = true;
+            console.log('Detected: VK Mobile Web Browser');
+        } else if (vkPlatform.includes('mobile_android') || vkPlatform.includes('mobile_ios')) {
+            isVKApp = true;
+            console.log('Detected: VK Mobile App (WebView)');
+        }
+    }
+}
 
-console.log('VK Platform detected:', vkPlatform, 'isVKWebView:', isVKWebView, 'isMobileVK:', isMobileVK);
+// Также проверяем по userAgent на всякий случай
+if (userAgent.includes('vk') && userAgent.includes('mobile')) {
+    isVKWebView = true;
+    isMobileVK = true;
+    isVKApp = true;
+}
+
+console.log('Environment:', {
+    vkPlatform,
+    isVKWebView,
+    isMobileVK,
+    isVKApp,
+    isVKMobileWeb
+});
 
 // Инициализируем VK Bridge только если мы в VK
 if (isVKWebView && typeof vkBridge !== 'undefined') {
@@ -1059,11 +1119,10 @@ function logDebug(type, message, details = null) {
     // Обновляем UI
     const logElement = document.createElement('div');
     logElement.className = `debug-log-entry ${type}`;
-    logElement.innerHTML = `
-        <span class="debug-log-time">[${time}]</span>
-        <strong>${message}</strong>
-        ${details ? `<div style="color: #aaa; font-size: 10px; margin-top: 2px;">${JSON.stringify(details)}</div>` : ''}
-    `;
+    logElement.innerHTML = 
+    '<span class="debug-log-time">[' + time + ']</span>' +
+    '<strong>' + message + '</strong>' +
+    (details ? '<div style="color: #aaa; font-size: 10px;">' + JSON.stringify(details) + '</div>' : '');
     
     const logsContainer = document.getElementById('tts-debug-logs');
     if (logsContainer) {
@@ -1102,41 +1161,61 @@ window.addEventListener('load', function() {
         savedLogs.forEach(log => {
             const logElement = document.createElement('div');
             logElement.className = `debug-log-entry ${log.type}`;
-            logElement.innerHTML = `
-                <span class="debug-log-time">[${log.time}]</span>
-                <strong>${log.message}</strong>
-                ${log.details ? `<div style="color: #aaa; font-size: 10px;">${JSON.stringify(log.details)}</div>` : ''}
-            `;
+            logElement.innerHTML = 
+    '<span class="debug-log-time">[' + log.time + ']</span>' +
+    '<strong>' + log.message + '</strong>' +
+    (log.details ? '<div style="color: #aaa; font-size: 10px;">' + JSON.stringify(log.details) + '</div>' : '');
             document.getElementById('tts-debug-logs')?.appendChild(logElement);
         });
     } catch(e) {}
 });
     // --- INIT ---
 // Модифицируем функцию init
+// ОБНОВЛЕННАЯ ИНИЦИАЛИЗАЦИЯ
 function init() {
     document.getElementById('json-input').value = JSON.stringify(currentSong, null, 4);
     applySongData();
     
-    // Настраиваем интерфейс для VK
-    if (isMobileVK) {
+    // НАСТРАИВАЕМ ИНТЕРФЕЙС В ЗАВИСИМОСТИ ОТ СРЕДЫ
+    if (isVKApp) {
+        // В приложении VK: скрываем выбор инструмента, показываем особую метку
         document.getElementById('instSelect').style.display = 'none';
         document.getElementById('voiceSelect').disabled = true;
-        document.getElementById('voiceSelect').innerHTML = '<option value="">TTS: VK Bridge</option>';
+        document.getElementById('voiceSelect').innerHTML = '<option value="">🎤 TTS: Audio</option>';
+        document.getElementById('ttsBtn').innerText = '🎤 Слова (Audio)';
         
-        // Показываем информацию о платформе
-        logDebug('info', 'Настроен интерфейс для мобильного VK', { vkPlatform });
+        logDebug('info', 'Настроен интерфейс для приложения VK');
+        
+    } else if (isVKMobileWeb) {
+        // В мобильной веб-версии VK: используем Web Speech API
+        document.getElementById('instSelect').style.display = 'block';
+        document.getElementById('voiceSelect').disabled = false;
+        document.getElementById('voiceSelect').innerHTML = '<option value="">Загрузка голосов...</option>';
+        document.getElementById('ttsBtn').innerText = '🗣️ Слова';
+        
+        // Загружаем голоса
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        setTimeout(loadVoices, 1000); // Даем время на загрузку
+        
+        logDebug('info', 'Настроен интерфейс для мобильной веб-версии VK');
+        
+    } else if (isVKWebView) {
+        // В других версиях VK
+        document.getElementById('instSelect').style.display = 'none';
+        document.getElementById('voiceSelect').disabled = true;
+        document.getElementById('voiceSelect').innerHTML = '<option value="">🎤 TTS</option>';
+        
     } else {
-        // Загружаем голоса только если не в мобильном VK
+        // В обычном браузере
         window.speechSynthesis.onvoiceschanged = loadVoices;
         loadVoices();
     }
     
-    // Добавляем обработчик жеста для AudioContext
+    // Активируем аудио по первому жесту
     document.addEventListener('click', function initAudioOnGesture() {
         if (!audioCtx) {
             initAudio();
         }
-        // Удаляем обработчик после первого клика
         document.removeEventListener('click', initAudioOnGesture);
     }, { once: true });
     
@@ -1188,53 +1267,50 @@ function init() {
 
     // --- VOICE ---
     // Улучшенная функция инициализации голосов
+// ОБНОВЛЕННАЯ ЗАГРУЗКА ГОЛОСОВ
 function loadVoices() {
-    logDebug('info', 'Загрузка голосов начата');
+    logDebug('info', 'Загрузка голосов');
     
     if (!window.speechSynthesis) {
-        logDebug('error', 'SpeechSynthesis не поддерживается браузером');
+        logDebug('error', 'SpeechSynthesis не поддерживается');
         return;
     }
 
-    // В мобильном VK не полагаемся на Web Speech API
-    if (isMobileVK) {
-        logDebug('info', 'В мобильном VK, пропускаем загрузку голосов Web Speech API');
+    // В приложении VK не загружаем голоса
+    if (isVKApp) {
+        logDebug('info', 'В приложении VK пропускаем загрузку голосов');
         return;
     }
 
-    // Пытаемся получить голоса сразу
     const voices = window.speechSynthesis.getVoices();
     
-    if (voices.length > 0) {
-        logDebug('success', `Голоса уже загружены: ${voices.length} голосов`);
-        updateVoiceSelect(voices);
-        return;
-    }
-
-    // Если голосов нет, ждем события voiceschanged
-    logDebug('info', 'Голосов нет, ждем voiceschanged...');
-    
-    const voicesChangedHandler = () => {
-        const voicesNow = window.speechSynthesis.getVoices();
-        logDebug('info', `Событие voiceschanged: ${voicesNow.length} голосов`);
+    if (voices.length === 0) {
+        // Ждем события voiceschanged
+        const voicesChangedHandler = () => {
+            const voicesNow = window.speechSynthesis.getVoices();
+            logDebug('info', `Голоса загружены через событие: ${voicesNow.length}`);
+            
+            if (voicesNow.length > 0) {
+                updateVoiceSelect(voicesNow);
+                window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler);
+            }
+        };
         
-        if (voicesNow.length > 0) {
-            updateVoiceSelect(voicesNow);
-            window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler);
+        window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler);
+        
+        // На мобильных пробуем активировать
+        if (isMobileVK || /mobile/i.test(navigator.userAgent)) {
+            setTimeout(() => {
+                const utterance = new SpeechSynthesisUtterance('');
+                utterance.volume = 0;
+                window.speechSynthesis.speak(utterance);
+                window.speechSynthesis.cancel();
+                logDebug('info', 'Активирован TTS API');
+            }, 500);
         }
-    };
-    
-    window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler);
-    
-    // На мобильных устройствах иногда нужно "разбудить" TTS
-    if (isMobileVK || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        setTimeout(() => {
-            const testUtterance = new SpeechSynthesisUtterance('');
-            testUtterance.volume = 0;
-            window.speechSynthesis.speak(testUtterance);
-            window.speechSynthesis.cancel();
-            logDebug('info', 'Пробный запуск TTS для активации');
-        }, 100);
+    } else {
+        logDebug('success', `Голоса уже загружены: ${voices.length}`);
+        updateVoiceSelect(voices);
     }
 }
     
@@ -1606,41 +1682,173 @@ function scheduleNote(bar, beat, time) {
         }
     }
 
-function speakPhrase(text) {
-    // Сразу логируем начало вызова
-    logDebug('info', 'START speakPhrase', { text, isVKWebView, isMobileVK, ttsRate });
-    
+// ОБНОВЛЕННАЯ ФУНКЦИЯ TTS ДЛЯ РАЗНЫХ СРЕД
+async function speakPhrase(text) {
+    logDebug('info', 'START speakPhrase', { 
+        text: text.substring(0, 50),
+        isVKApp,
+        isVKMobileWeb 
+    });
+
     if (!text) {
         logDebug('warning', 'Пустой текст, выход');
         return;
     }
 
-    // 1. Всегда сначала пробуем безопасный вызов через speakViaVKBridge внутри VK
-    if (isVKWebView || isMobileVK) {
-        logDebug('info', 'Определена среда VK, вызов speakViaVKBridge');
-        speakViaVKBridge(text, ttsRate);
-        return; // speakViaVKBridge сама решит, использовать VK Bridge или fallback
+    // 1. В ПРИЛОЖЕНИИ VK: Используем ОБХОДНОЙ ПУТЬ через аудио
+    if (isVKApp) {
+        logDebug('info', 'В приложении VK, используем аудио-метод');
+        await speakViaAudioFallback(text);
+        return;
     }
 
-    // 2. Только если мы НЕ в VK, используем прямой Web Speech API
-    logDebug('info', 'Вне среды VK, прямой вызов Web Speech API');
-    
+    // 2. В МОБИЛЬНОЙ ВЕБ-ВЕРСИИ VK: Пробуем Web Speech API
+    if (isVKMobileWeb) {
+        logDebug('info', 'В мобильной веб-версии VK, используем Web Speech API');
+        speakViaWebSpeechAPI(text);
+        return;
+    }
+
+    // 3. В ОБЫЧНОМ БРАУЗЕРЕ: Стандартный путь
     if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        let utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'zh-CN';
-        utterance.rate = ttsRate;
-        if (selectedVoice) utterance.voice = selectedVoice;
-        
-        utterance.onstart = () => logDebug('success', 'Web Speech API: воспроизведение началось');
-        utterance.onerror = (event) => logDebug('error', 'Web Speech API: ошибка', { error: event.error, message: event.message });
-        utterance.onend = () => logDebug('info', 'Web Speech API: воспроизведение завершено');
-        
-        window.speechSynthesis.speak(utterance);
+        logDebug('info', 'В обычном браузере, используем стандартный TTS');
+        speakViaWebSpeechAPI(text);
     } else {
-        logDebug('error', 'Web Speech API недоступен в этом браузере');
+        logDebug('error', 'TTS не доступен в этой среде');
     }
 }
+
+// НОВЫЙ МЕТОД: АУДИО-ЗАПИСИ ДЛЯ ПРИЛОЖЕНИЯ VK
+async function speakViaAudioFallback(text) {
+    logDebug('info', 'Запуск аудио-записи для TTS', { text: text.substring(0, 30) });
+    
+    try {
+        // Здесь можно реализовать несколько вариантов:
+        
+        // Вариант 1: Использовать предзаписанные аудио для ключевых фраз
+        if (usePreRecordedAudio(text)) {
+            return;
+        }
+        
+        // Вариант 2: Использовать внешний TTS API (если есть интернет)
+        await useExternalTTSAPI(text);
+        
+        // Вариант 3: Воспроизвести через системный звук
+        playSystemBeep();
+        
+    } catch (error) {
+        logDebug('error', 'Аудио-метод не сработал', { error: error.message });
+    }
+}
+
+// ФУНКЦИЯ ДЛЯ Web Speech API
+function speakViaWebSpeechAPI(text) {
+    if (!window.speechSynthesis) {
+        logDebug('error', 'Web Speech API недоступен');
+        return;
+    }
+
+    try {
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = ttsRate;
+        
+        // Выбираем китайский голос если есть
+        if (availableVoices && availableVoices.length > 0) {
+            const chineseVoice = availableVoices.find(v => 
+                v.lang.includes('zh') || v.lang.includes('CN') || v.lang.includes('TW')
+            );
+            if (chineseVoice) {
+                utterance.voice = chineseVoice;
+                logDebug('info', 'Используем китайский голос:', chineseVoice.name);
+            }
+        }
+        
+        utterance.onstart = () => logDebug('success', 'TTS начал воспроизведение');
+        utterance.onend = () => logDebug('info', 'TTS завершил воспроизведение');
+        utterance.onerror = (event) => {
+            logDebug('error', 'Ошибка TTS', { 
+                error: event.error,
+                message: event.message 
+            });
+            
+            // В приложении VK пробуем альтернативный метод
+            if (isVKApp) {
+                logDebug('info', 'Пробуем альтернативный метод для VK App');
+                playSystemBeep(); // Хотя бы сигнал
+            }
+        };
+        
+        window.speechSynthesis.speak(utterance);
+        
+    } catch (error) {
+        logDebug('error', 'Исключение в Web Speech API', { error: error.message });
+    }
+}
+
+// ОБХОДНОЙ МЕТОД ДЛЯ VK APP
+function usePreRecordedAudio(text) {
+    // Создаем карту ключевых фраз к аудио-файлам
+    const audioMap = {
+        '测试': 'test_audio.mp3',
+        '中文': 'chinese_audio.mp3',
+        // Добавьте другие фразы
+    };
+    
+    // Ищем совпадение
+    for (const [phrase, audioFile] of Object.entries(audioMap)) {
+        if (text.includes(phrase)) {
+            logDebug('info', 'Найдено предзаписанное аудио для фразы', { phrase });
+            
+            // Воспроизводим аудио
+            const audio = new Audio(audioFile);
+            audio.volume = 0.5;
+            audio.play().catch(e => {
+                logDebug('error', 'Не удалось воспроизвести аудио', { error: e.message });
+            });
+            
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+async function useExternalTTSAPI(text) {
+    // Если есть доступ к внешнему TTS API
+    // Например, Google TTS API или другой
+    logDebug('info', 'Попытка использовать внешний TTS API');
+    
+    // Заглушка - реализуйте при необходимости
+    return false;
+}
+
+function playSystemBeep() {
+    // Проигрываем простой звуковой сигнал
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 440;
+        oscillator.type = 'sine';
+        gainNode.gain.value = 0.1;
+        
+        oscillator.start();
+        setTimeout(() => oscillator.stop(), 100);
+        
+        logDebug('info', 'Воспроизведен системный сигнал');
+    } catch (e) {
+        logDebug('error', 'Не удалось воспроизвести сигнал', { error: e.message });
+    }
+}
+
+
 function fallbackTTS(text) {
     logDebug('info', 'Запуск fallbackTTS', { text });
     if (window.speechSynthesis) {
@@ -1698,6 +1906,32 @@ function fallbackTTS(text) {
 
     init();
 
+</script>
+
+<div id="environment-indicator">
+    Режим: <span id="env-mode">Определение...</span>
+</div>
+
+<script>
+// Показываем режим работы
+window.addEventListener('load', function() {
+    const envMode = document.getElementById('env-mode');
+    
+    if (isVKApp) {
+        envMode.textContent = 'VK Приложение';
+        envMode.style.color = '#ff5252';
+        document.body.classList.add('vk-app-mode');
+    } else if (isVKMobileWeb) {
+        envMode.textContent = 'VK Мобильный Веб';
+        envMode.style.color = '#4caf50';
+    } else if (isVKWebView) {
+        envMode.textContent = 'VK Десктоп';
+        envMode.style.color = '#2196f3';
+    } else {
+        envMode.textContent = 'Браузер';
+        envMode.style.color = '#9c27b0';
+    }
+});
 </script>
 </body>
 </html>
