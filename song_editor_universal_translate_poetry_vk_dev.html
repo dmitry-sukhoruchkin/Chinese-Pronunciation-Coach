@@ -918,56 +918,24 @@ function ensureVoiceLoading() {
 }
 
 // Обновляем функцию loadVoices
-function updateVoiceSelect(voices) {
+function updateVoiceSelect() {
     const select = document.getElementById('voiceSelect');
     select.innerHTML = '';
     
-    // Используем переданные голоса
-    voices.forEach(v => {
+    availableVoices.forEach(v => {
         const opt = document.createElement('option');
         opt.value = v.name;
-        opt.innerText = `${v.name.substring(0, 30)} (${v.lang})`;
+        opt.innerText = `${v.name.substring(0, 20)} (${v.lang})`;
         select.appendChild(opt);
     });
     
-    // 1. Сначала ищем конкретно Google 國語（臺灣）
-    let targetVoice = voices.find(v => 
-        v.name.includes('Google 國語（臺灣）') || 
-        v.name.includes('Google Chinese (Taiwan)')
-    );
-    
-    // 2. Если не нашли, ищем любой тайваньский китайский
-    if (!targetVoice) {
-        targetVoice = voices.find(v => v.lang.includes('zh-TW'));
+    // Автовыбор китайского голоса если есть
+    const chineseVoice = availableVoices.find(v => v.lang.includes('zh') || v.lang.includes('CN'));
+    if (chineseVoice) {
+        select.value = chineseVoice.name;
+        selectedVoice = chineseVoice;
+        logDebug('success', `Автовыбран китайский голос: ${chineseVoice.name}`);
     }
-    
-    // 3. Если не нашли, ищем любой китайский голос
-    if (!targetVoice) {
-        targetVoice = voices.find(v => 
-            v.lang.includes('zh') || 
-            v.lang.includes('CN') || 
-            v.lang.includes('TW')
-        );
-    }
-    
-    // 4. Устанавливаем выбранный голос
-    if (targetVoice) {
-        select.value = targetVoice.name;
-        selectedVoice = targetVoice;
-        logDebug('success', `Выбран голос: ${targetVoice.name} (${targetVoice.lang})`);
-        
-        // Визуальная индикация в интерфейсе
-        if (targetVoice.name.includes('Google 國語（臺灣）')) {
-            select.style.border = '1px solid #4caf50';
-            select.title = 'Используется оптимальный голос для песен';
-        }
-    } else {
-        logDebug('warning', 'Китайские голоса не найдены');
-        select.value = ''; // Сбрасываем выбор
-    }
-    
-    // Обновляем глобальную переменную
-    availableVoices = voices;
 }
 
 function testVKBridgeExplicitly() {
@@ -1018,12 +986,6 @@ function initializeTTSWithGesture() {
     setTimeout(() => speakPhrase('测试'), 100);
 }
 
-// УБРАТЬ СЛОЖНУЮ ПРОВЕРКУ СРЕДЫ VK
-// ЗАМЕНИТЬ ВСЮ ЛОГИКУ С isVKWebView, isVKApp И Т.Д. НА ПРОСТО:
-let isVKWebView = false; // Всегда false, не используем VKBridge
-let isMobileVK = false;  // Не нужно специальное поведение
-let isVKApp = false;  // Не нужно специальное поведение
-let isVKMobileWeb = false;  // Не нужно специальное поведение
 </script>
 
 
@@ -1269,14 +1231,46 @@ window.addEventListener('load', function() {
     } catch(e) {}
 });
     // --- INIT ---
-// УПРОСТИТЬ ИНИЦИАЛИЗАЦИЮ
+// Модифицируем функцию init
+// ОБНОВЛЕННАЯ ИНИЦИАЛИЗАЦИЯ
 function init() {
     document.getElementById('json-input').value = JSON.stringify(currentSong, null, 4);
     applySongData();
     
-    // Простая загрузка голосов через Web Speech API
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-    loadVoices();
+    // НАСТРАИВАЕМ ИНТЕРФЕЙС В ЗАВИСИМОСТИ ОТ СРЕДЫ
+    if (isVKApp) {
+        // В приложении VK: скрываем выбор инструмента, показываем особую метку
+        document.getElementById('instSelect').style.display = 'none';
+        document.getElementById('voiceSelect').disabled = true;
+        document.getElementById('voiceSelect').innerHTML = '<option value="">🎤 TTS: Audio</option>';
+        document.getElementById('ttsBtn').innerText = '🎤 Слова (Audio)';
+        
+        logDebug('info', 'Настроен интерфейс для приложения VK');
+        
+    } else if (isVKMobileWeb) {
+        // В мобильной веб-версии VK: используем Web Speech API
+        document.getElementById('instSelect').style.display = 'block';
+        document.getElementById('voiceSelect').disabled = false;
+        document.getElementById('voiceSelect').innerHTML = '<option value="">Загрузка голосов...</option>';
+        document.getElementById('ttsBtn').innerText = '🗣️ Слова';
+        
+        // Загружаем голоса
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        setTimeout(loadVoices, 1000); // Даем время на загрузку
+        
+        logDebug('info', 'Настроен интерфейс для мобильной веб-версии VK');
+        
+    } else if (isVKWebView) {
+        // В других версиях VK
+        document.getElementById('instSelect').style.display = 'none';
+        document.getElementById('voiceSelect').disabled = true;
+        document.getElementById('voiceSelect').innerHTML = '<option value="">🎤 TTS</option>';
+        
+    } else {
+        // В обычном браузере
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        loadVoices();
+    }
     
     // Активируем аудио по первому жесту
     document.addEventListener('click', function initAudioOnGesture() {
@@ -1337,28 +1331,32 @@ function init() {
 // ОБНОВЛЕННАЯ ЗАГРУЗКА ГОЛОСОВ
 function loadVoices() {
     logDebug('info', 'Загрузка голосов');
+    
     if (!window.speechSynthesis) {
         logDebug('error', 'SpeechSynthesis не поддерживается');
         return;
     }
-    
+
     // В приложении VK не загружаем голоса
     if (isVKApp) {
         logDebug('info', 'В приложении VK пропускаем загрузку голосов');
         return;
     }
-    
+
     const voices = window.speechSynthesis.getVoices();
+    
     if (voices.length === 0) {
         // Ждем события voiceschanged
         const voicesChangedHandler = () => {
             const voicesNow = window.speechSynthesis.getVoices();
             logDebug('info', `Голоса загружены через событие: ${voicesNow.length}`);
+            
             if (voicesNow.length > 0) {
-                updateVoiceSelect(voicesNow); // Правильный вызов с параметром
+                updateVoiceSelect(voicesNow);
                 window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler);
             }
         };
+        
         window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler);
         
         // На мобильных пробуем активировать
@@ -1373,7 +1371,7 @@ function loadVoices() {
         }
     } else {
         logDebug('success', `Голоса уже загружены: ${voices.length}`);
-        updateVoiceSelect(voices); // Правильный вызов с параметром
+        updateVoiceSelect(voices);
     }
 }
     
@@ -1745,25 +1743,40 @@ function scheduleNote(bar, beat, time) {
         }
     }
 
-// ЗАМЕНИТЬ СЛОЖНУЮ ФУНКЦИЮ speakPhrase НА ПРОСТУЮ
-function speakPhrase(text) {
-    if (!text || !window.speechSynthesis) return;
-    
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    utterance.rate = ttsRate;
-    
-    // Используем выбранный голос или первый китайский
-    if (selectedVoice) {
-        utterance.voice = selectedVoice;
-    } else {
-        const voices = window.speechSynthesis.getVoices();
-        const chineseVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('CN'));
-        if (chineseVoice) utterance.voice = chineseVoice;
+// ОБНОВЛЕННАЯ ФУНКЦИЯ TTS ДЛЯ РАЗНЫХ СРЕД
+async function speakPhrase(text) {
+    logDebug('info', 'START speakPhrase', { 
+        text: text.substring(0, 50),
+        isVKApp,
+        isVKMobileWeb 
+    });
+
+    if (!text) {
+        logDebug('warning', 'Пустой текст, выход');
+        return;
     }
-    
-    window.speechSynthesis.speak(utterance);
+
+    // 1. В ПРИЛОЖЕНИИ VK: Используем ОБХОДНОЙ ПУТЬ через аудио
+    if (isVKApp) {
+        logDebug('info', 'В приложении VK, используем аудио-метод');
+        await speakViaAudioFallback(text);
+        return;
+    }
+
+    // 2. В МОБИЛЬНОЙ ВЕБ-ВЕРСИИ VK: Пробуем Web Speech API
+    if (isVKMobileWeb) {
+        logDebug('info', 'В мобильной веб-версии VK, используем Web Speech API');
+        speakViaWebSpeechAPI(text);
+        return;
+    }
+
+    // 3. В ОБЫЧНОМ БРАУЗЕРЕ: Стандартный путь
+    if (window.speechSynthesis) {
+        logDebug('info', 'В обычном браузере, используем стандартный TTS');
+        speakViaWebSpeechAPI(text);
+    } else {
+        logDebug('error', 'TTS не доступен в этой среде');
+    }
 }
 
 // НОВЫЙ МЕТОД: АУДИО-ЗАПИСИ ДЛЯ ПРИЛОЖЕНИЯ VK
