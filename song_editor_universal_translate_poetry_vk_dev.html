@@ -537,6 +537,10 @@
         <div id="zoom-wrapper"></div>
     </div>
     
+    <button class="ctrl-btn" onclick="runTTSCapabilityDiagnostics()" 
+        style="background: #FF5722; color: white; font-size: 10px;">
+    🔍 Диагностика TTS
+</button>
     <div id="tts-debug-panel" style="display: none; position: fixed; bottom: 10px; right: 10px; width: 320px; max-height: 300px; background: rgba(0,0,0,0.9); color: #0f0; border: 2px solid #444; border-radius: 5px; z-index: 10000; font-family: monospace; font-size: 11px; overflow-y: auto;">
     <div style="display: flex; justify-content: space-between; background: #222; padding: 5px; border-bottom: 1px solid #444;">
         <strong>🔊 TTS Debug Console</strong>
@@ -584,6 +588,53 @@ async function testAllTTSMethods() {
         });
     }
 }
+function runTTSCapabilityDiagnostics() {
+    const results = {
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        isVKWebView: isVKWebView,
+        isMobileVK: isMobileVK,
+        vkPlatform: vkPlatform,
+        speechSynthesisAvailable: !!window.speechSynthesis,
+        speechSynthesisSpeaking: window.speechSynthesis?.speaking || false,
+        speechSynthesisPending: window.speechSynthesis?.pending || false,
+        audioContextAvailable: !!window.AudioContext || !!window.webkitAudioContext,
+        audioContextState: audioCtx?.state || 'not initialized'
+    };
+    
+    // Проверяем доступные голоса
+    if (window.speechSynthesis) {
+        const voices = window.speechSynthesis.getVoices();
+        results.voicesTotal = voices.length;
+        results.chineseVoices = voices.filter(v => v.lang.includes('zh') || v.lang.includes('CN')).length;
+        results.voiceLanguages = [...new Set(voices.map(v => v.lang))].slice(0, 5); // первые 5 языков
+    }
+    
+    // Проверяем разрешения (важно для мобильной эмуляции)
+    navigator.permissions?.query({name: 'microphone'}).then(perm => {
+        results.microphonePermission = perm.state;
+    }).catch(() => {});
+    
+    logDebug('info', '📋 Полная диагностика TTS', results);
+    
+    // Выводим результаты в читаемом виде
+    const summary = `
+=== ДИАГНОСТИКА TTS ===
+Время: ${new Date().toLocaleTimeString()}
+UserAgent: ${navigator.userAgent.substring(0, 80)}...
+Режим VK: ${isVKWebView ? 'Да' : 'Нет'} (${vkPlatform || 'не определена'})
+SpeechSynthesis: ${results.speechSynthesisAvailable ? '✅ Доступен' : '❌ Недоступен'}
+Состояние: ${results.speechSynthesisSpeaking ? 'Говорит' : 'Не говорит'}
+Голоса: ${results.voicesTotal || 0} всего, ${results.chineseVoices || 0} китайских
+AudioContext: ${results.audioContextAvailable ? '✅ Доступен' : '❌ Недоступен'}
+Состояние AudioContext: ${results.audioContextState}
+    `.trim();
+    
+    // Создаем всплывающее окно с результатами
+    alert(summary);
+    
+    return results;
+}
 </script>
 
 <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
@@ -618,13 +669,24 @@ if (vkPlatform && (vkPlatform.includes('mobile') || vkIsApp)) {
 // Функция для запуска TTS через VK Bridge
 async function speakViaVKBridge(text, rate = 1.0) {
     if (!isVKWebView || !text) {
-        logDebug('info', 'WebView не обнаружен, fallback на стандартный TTS', { text });
+        // Fallback на стандартный Web Speech API, если не в VK
         fallbackTTS(text);
         return;
     }
-    
-    logDebug('info', 'Попытка VK Bridge TTS', { text, rate, platform: vkPlatform });
-    
+
+    // 1. Проверяем поддержку метода VKWebAppTtsPlay
+    try {
+        const supported = await vkBridge.send('VKWebAppGetSupportedMethods');
+        if (!supported.methods || !supported.methods.includes('VKWebAppTtsPlay')) {
+            console.warn('VKWebAppTtsPlay не поддерживается в этом клиенте VK.');
+            fallbackTTS(text); // Переход на запасной вариант
+            return;
+        }
+    } catch (e) {
+        console.error('Ошибка проверки поддерживаемых методов:', e);
+    }
+
+    // 2. Пробуем вызвать TTS через VK Bridge
     try {
         await vkBridge.send('VKWebAppTtsPlay', {
             text: text,
@@ -632,21 +694,127 @@ async function speakViaVKBridge(text, rate = 1.0) {
             rate: rate,
             volume: 1.0
         });
-        logDebug('success', 'VK Bridge TTS запущен успешно', { text });
+        console.log('VK Bridge TTS запущен');
     } catch (error) {
-        logDebug('error', 'VK Bridge TTS ошибка', { 
-            error: error.message, 
-            errorCode: error.code,
-            text: text.substring(0, 20) + '...' 
-        });
-        
-        // Попробуем fallback через создание аудио элемента (альтернативный метод)
-        logDebug('info', 'Попытка fallback через Audio API');
+        console.error('Ошибка VK Bridge TTS:', error);
+        // 3. Fallback на стандартный TTS при любой ошибке
         fallbackTTS(text);
     }
 }
 
 console.log('VK Platform detected:', vkPlatform, 'isVKWebView:', isVKWebView);
+
+function ensureVoiceLoading() {
+    // Проблема: в мобильной эмуляции голоса иногда не загружаются вовремя
+    if (!window.speechSynthesis) {
+        logDebug('error', 'SpeechSynthesis вообще недоступен');
+        return;
+    }
+    
+    const voices = window.speechSynthesis.getVoices();
+    
+    // Если голосов нет, ждем события voiceschanged
+    if (voices.length === 0) {
+        logDebug('info', 'Голоса не загружены, ждем voiceschanged...');
+        
+        let voicesChangedHandler = () => {
+            const voicesNow = window.speechSynthesis.getVoices();
+            logDebug('info', `Голоса загружены через событие: ${voicesNow.length} голосов`);
+            
+            // Обновляем доступные голоса в интерфейсе
+            availableVoices = voicesNow;
+            updateVoiceSelect();
+            
+            // Удаляем обработчик после срабатывания
+            window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler);
+        };
+        
+        window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler);
+        
+        // На мобильных иногда нужно "разбудить" API
+        setTimeout(() => {
+            if (window.speechSynthesis.getVoices().length === 0) {
+                logDebug('warning', 'Принудительный запуск voiceschanged не помог');
+                // Пробуем сказать что-то короткое чтобы активировать API
+                const utterance = new SpeechSynthesisUtterance('');
+                utterance.volume = 0;
+                window.speechSynthesis.speak(utterance);
+                window.speechSynthesis.cancel();
+            }
+        }, 1000);
+    } else {
+        logDebug('success', `Голоса уже загружены: ${voices.length} голосов`);
+    }
+}
+
+// Обновляем функцию loadVoices
+function updateVoiceSelect() {
+    const select = document.getElementById('voiceSelect');
+    select.innerHTML = '';
+    
+    availableVoices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.name;
+        opt.innerText = `${v.name.substring(0, 20)} (${v.lang})`;
+        select.appendChild(opt);
+    });
+    
+    // Автовыбор китайского голоса если есть
+    const chineseVoice = availableVoices.find(v => v.lang.includes('zh') || v.lang.includes('CN'));
+    if (chineseVoice) {
+        select.value = chineseVoice.name;
+        selectedVoice = chineseVoice;
+        logDebug('success', `Автовыбран китайский голос: ${chineseVoice.name}`);
+    }
+}
+
+function testVKBridgeExplicitly() {
+    if (!isVKWebView) {
+        logDebug('info', 'VK Bridge: не в VK WebView');
+        return;
+    }
+    
+    logDebug('info', 'Тестируем VK Bridge напрямую...');
+    
+    // Тест 1: Проверяем доступность метода
+    vkBridge.send('VKWebAppGetVersion')
+        .then(version => {
+            logDebug('success', `VK Bridge доступен, версия: ${version}`); // Не факт что будет версия
+            
+            // Тест 2: Пробуем TTS с коротким текстом
+            vkBridge.send('VKWebAppTtsPlay', {
+                text: '测试',
+                pitch: 1.0,
+                rate: 1.0,
+                volume: 1.0
+            }).then(() => {
+                logDebug('success', 'VK Bridge TTS сработал');
+            }).catch(err => {
+                logDebug('error', 'VK Bridge TTS ошибка', { error: err.message });
+            });
+        })
+        .catch(err => {
+            logDebug('error', 'VK Bridge недоступен', { error: err.message });
+        });
+}
+
+let ttsInitialized = false;
+
+function initializeTTSWithGesture() {
+    if (ttsInitialized) return;
+    
+    // Произносим пустой звук с нулевой громкостью
+    const utterance = new SpeechSynthesisUtterance('');
+    utterance.volume = 0;
+    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.cancel();
+    
+    ttsInitialized = true;
+    logDebug('success', 'TTS инициализирован жестом пользователя');
+    
+    // Теперь можно нормально использовать
+    setTimeout(() => speakPhrase('测试'), 100);
+}
 
 </script>
 
