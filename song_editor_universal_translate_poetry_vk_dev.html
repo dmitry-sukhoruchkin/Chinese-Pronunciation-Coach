@@ -1717,7 +1717,7 @@ const ttsConfig = {
 
 async function speakPhrase(text) {
     // 1. Если мы в обычном браузере И включен нативный TTS - используем его (для отладки)
-    if (!isTelegramWebApp && !ttsConfig.useAudioFiles && window.speechSynthesis) {
+    if (!window.Telegram?.WebApp && !ttsConfig.useAudioFiles && window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'zh-CN';
         window.speechSynthesis.speak(utterance);
