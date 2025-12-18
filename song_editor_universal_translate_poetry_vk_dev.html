@@ -741,6 +741,35 @@ AudioContext: ${results.audioContextAvailable ? '✅ Доступен' : '❌ Н
 }
 </script>
 
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<script>
+// 3. Инициализируйте Telegram WebApp
+const tg = window.Telegram.WebApp;
+
+// Сообщите Telegram, что приложение готово к отображению
+tg.ready();
+tg.expand(); // Рекомендуется развернуть на весь экран
+
+// 4. Получите данные пользователя (небезопасный метод, см. важное примечание ниже)
+const user = tg.initDataUnsafe?.user;
+console.log('Пользователь:', user?.first_name, 'ID:', user?.id);
+
+// 5. Используйте тему Telegram для нативного вида
+document.documentElement.style.setProperty('--bg', 'var(--tg-theme-bg-color, #1e1e1e)');
+document.documentElement.style.setProperty('--text-color', 'var(--tg-theme-text-color, #eee)');
+
+// 6. Для отправки данных обратно в чат бота (например, при сохранении JSON)
+function sendDataToBot(dataString) {
+    // Этот метод работает только если Mini App запущен через web_app-кнопку[citation:1][citation:8]
+    tg.sendData(dataString);
+    // После отправки окно можно закрыть
+    // tg.close();
+}
+let isTelegramWebApp = !!window.Telegram?.WebApp;
+
+</script>
+
 <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 <script>
 // Инициализация VK Bridge
@@ -2161,6 +2190,9 @@ window.addEventListener('load', function() {
     } else if (isVKWebView) {
         envMode.textContent = 'VK Десктоп';
         envMode.style.color = '#2196f3';
+    } else if (isTelegramWebApp) {
+        envMode.textContent = 'Telegram Приложение';
+        envMode.style.color = '#ff5252';
     } else {
         envMode.textContent = 'Браузер';
         envMode.style.color = '#9c27b0';
