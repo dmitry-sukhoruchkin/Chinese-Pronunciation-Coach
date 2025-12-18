@@ -660,6 +660,8 @@
 <button id="tts-debug-toggle" style="display: none; position: fixed; bottom: 10px; left: 10px; z-index: 9999; background: #ff9800; color: black; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 18px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">🐞</button>
 
 <script>
+let ttsAvailable = !!window.speechSynthesis;
+
 function testTTS(text) {
     logDebug('info', 'Ручной тест TTS', { text, isVKWebView });
     // Всегда вызываем speakPhrase, которая сама решит, какой метод использовать
@@ -948,6 +950,9 @@ function ensureVoiceLoading() {
 
 // Обновляем функцию loadVoices
 function updateVoiceSelect(voices, forceDefault = false) {
+if (!window.speechSynthesis) {
+    return;
+}
     const select = document.getElementById('voiceSelect');
     if (!select) return;
     
@@ -1383,7 +1388,10 @@ function init() {
         document.getElementById('ttsBtn').innerText = '🗣️ Слова';
         
         // Загружаем голоса
-        window.speechSynthesis.onvoiceschanged = loadVoices;
+if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    setTimeout(loadVoices, 1000);
+}
         setTimeout(loadVoices, 1000); // Даем время на загрузку
         
         logDebug('info', 'Настроен интерфейс для мобильной веб-версии VK');
@@ -1396,7 +1404,10 @@ function init() {
         
     } else {
         // В обычном браузере
-        window.speechSynthesis.onvoiceschanged = loadVoices;
+if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    setTimeout(loadVoices, 1000);
+}
         loadVoices();
     }
     
@@ -1777,7 +1788,9 @@ function schedulerFrame() {
 // Останавливаем requestAnimationFrame при остановке
 function stop() {
   isPlaying = false;
-  window.speechSynthesis.cancel();
+if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+}
   
   // Отменяем все запланированные таймауты для TTS
   for (let i = scheduledTtsTimeouts.length - 1; i >= 0; i--) {
@@ -1981,7 +1994,7 @@ async function speakViaAudioFallback(text) {
 
 // ФУНКЦИЯ ДЛЯ Web Speech API
 function speakViaWebSpeechAPI(text) {
-    if (!window.speechSynthesis) {
+    if (!window.speechSynthesis || !window.speechSynthesis.speak) {
         logDebug('error', 'Web Speech API недоступен');
         return;
     }
@@ -2114,7 +2127,7 @@ function playSystemBeep() {
 
 function fallbackTTS(text) {
     logDebug('info', 'Запуск fallbackTTS', { text });
-    if (window.speechSynthesis) {
+    if (window.speechSynthesis && window.speechSynthesis.speak) {
         window.speechSynthesis.cancel();
         let u = new SpeechSynthesisUtterance(text);
         u.lang = 'zh-CN';
