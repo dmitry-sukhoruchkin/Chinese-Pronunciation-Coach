@@ -662,6 +662,13 @@
 <script>
 let ttsAvailable = !!window.speechSynthesis;
 
+if (!ttsAvailable) {
+    document.getElementById('voiceSelect').style.display = 'none';
+    document.getElementById('rateRange').parentNode.style.display = 'none';
+    document.getElementById('offsetRange').parentNode.style.display = 'none';
+    document.getElementById('ttsBtn').style.display = 'none';
+}
+
 function testTTS(text) {
     logDebug('info', 'Ручной тест TTS', { text, isVKWebView });
     // Всегда вызываем speakPhrase, которая сама решит, какой метод использовать
